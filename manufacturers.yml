@@ -1,0 +1,33 @@
+manufacturers:
+  subaru:
+    hebrew: "סובארו"
+    english: "Subaru"
+    manufacturer_id: 35
+    models:
+      impreza:
+        hebrew: "אימפרזה"
+        english: "Impreza"
+        model_id: 10477
+      forester:
+        hebrew: "פורסטר"
+        english: "Forester"
+        model_id: 10476
+      xv:
+        hebrew: "XV"
+        english: "XV"
+        model_id: 10485
+      outback:
+        hebrew: "אאוטבק"
+        english: "Outback"
+        model_id: 10481
+
+  # We'll add more manufacturers as we go
+  # toyota:
+  #   hebrew: "טויוטה"
+  #   english: "Toyota"
+  #   manufacturer_id: 1
+  #   models:
+  #     corolla:
+  #       hebrew: "קורולה"
+  #       english: "Corolla"
+  #       model_id: 1001 
