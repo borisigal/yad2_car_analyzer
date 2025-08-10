@@ -56,7 +56,7 @@ class DataEnricher:
                 drop_if_exists = "DROP TABLE IF EXISTS"
                 # PostgreSQL syntax for mechanical age calculation
                 mechanical_age_sql = "ROUND((COALESCE(mileage, 0)::NUMERIC) / 15000.0, 2)"
-                ratio_sql = "ROUND(((COALESCE(mileage, 0)::NUMERIC) / 15000.0) / (COALESCE(age, 1)::NUMERIC), 2)"
+                ratio_sql = "ROUND((COALESCE(mileage, 0)::NUMERIC / 15000.0) / GREATEST(COALESCE(age, 1), 1)::NUMERIC, 2)"
             else:
                 table_name = "car_listings"
                 temp_table_name = "car_listings_enriched"
@@ -135,4 +135,11 @@ class DataEnricher:
     
     def enrich_data(self):
         """Run all data enrichment operations"""
-        return self.enrich_data_with_mechanical_age() 
+        return self.enrich_data_with_mechanical_age()
+
+def main():
+    enricher = DataEnricher(database_type="sqlite")
+    enricher.enrich_data()
+
+if __name__ == "__main__":
+    main()

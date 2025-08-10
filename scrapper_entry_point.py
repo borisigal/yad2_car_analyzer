@@ -152,7 +152,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Yad2 Car Analyzer - Scrape and store vehicle data')
     parser.add_argument('--manufacturer', '-m',  default='subaru',
                        help='Manufacturer key (e.g., subaru). If not specified, scrapes all manufacturers.')
-    parser.add_argument('--model', '-md', default='impreza',
+    parser.add_argument('--model', '-md', 
                        help='Model key (e.g., impreza). If not specified, scrapes all models for the manufacturer.')
     parser.add_argument('--listings', '-l', type=int, default=1,
                        help='Number of listings to scrape per model (default: 1)')
