@@ -1,0 +1,79 @@
+---
+alwaysApply: true
+---
+
+## Object-Oriented Programming (OOP)
+- follow SOLID principles (Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion)
+- prefer composition over inheritance
+- use meaningful class and method names that describe their purpose
+- keep classes focused on a single responsibility
+- encapsulate data and behavior together
+- use abstract classes and interfaces for better design flexibility
+
+## Code Quality Principles
+- follow DRY (Don't Repeat Yourself) - extract common functionality into reusable components
+- apply KISS (Keep It Simple, Stupid) - prefer simple solutions over complex ones
+- implement YAGNI (You Aren't Gonna Need It) - don't build features until they're needed
+- maintain high cohesion and low coupling between modules
+- write self-documenting code with clear variable and function names
+
+
+## Design Patterns
+- use Factory pattern for object creation when type depends on runtime conditions
+- apply Observer pattern for event-driven architectures
+- implement Strategy pattern for interchangeable algorithms
+- use Singleton pattern sparingly and only when truly needed
+- consider Repository pattern for data access abstraction
+- apply Decorator pattern for extending functionality without modification
+
+## Code Organization
+- organize code into logical modules and packages
+- separate concerns (business logic, data access, presentation)
+- use consistent naming conventions throughout the project
+- group related functionality together
+- maintain clear separation between public and private interfaces
+- follow the principle of least privilege for method and class visibility
+
+## Error Handling & Logging
+- use specific exception types rather than generic ones
+- implement proper error propagation and handling
+- log meaningful information for debugging and monitoring
+- fail fast when encountering invalid states
+- provide clear error messages for users and developers
+- use structured logging with appropriate log levels
+
+## Performance & Optimization
+- profile before optimizing - measure actual performance bottlenecks
+- prefer readability over premature optimization
+- use appropriate data structures for the use case
+- implement lazy loading when dealing with expensive operations
+- cache frequently accessed data when appropriate
+- consider memory usage and garbage collection impact
+
+## Documentation & Comments
+- write code that is self-explanatory
+- use comments to explain "why" not "what"
+- maintain up-to-date documentation for public APIs
+- document complex algorithms and business logic
+- use meaningful commit messages that explain the change
+- keep README files current with setup and usage instructions
+
+## Version Control Best Practices
+- make small, focused commits with clear messages
+- use feature branches for new development
+- review code before merging to main branch
+- tag releases with semantic versioning
+- maintain a clean commit history
+- include relevant issue numbers in commit messages
+
+## Security Practices
+- validate all input data
+- use parameterized queries for database operations
+- implement proper authentication and authorization
+- store sensitive data securely (environment variables, encrypted storage)
+- regularly update dependencies to patch security vulnerabilities
+- follow principle of least privilege for system access
+description:
+globs:
+alwaysApply: false
+---

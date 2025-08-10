@@ -1,0 +1,16 @@
+---
+alwaysApply: false
+---
+## Database Operations
+- always backup data before destructive operations
+- use transactions for multi-step database operations
+- validate SQL queries before execution
+- prefer parameterized queries to prevent SQL injection
+
+## Test-Driven Development (TDD)
+- write tests before implementing functionality (Red-Green-Refactor cycle)
+- aim for high test coverage but focus on meaningful tests
+- write unit tests for individual components
+- create integration tests for component interactions
+- use descriptive test names that explain the expected behavior
+- keep tests simple, focused, and independent

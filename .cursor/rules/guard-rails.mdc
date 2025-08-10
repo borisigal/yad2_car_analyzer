@@ -1,0 +1,43 @@
+---
+alwaysApply: true
+---
+
+## File Management
+- always ask before creating new files
+- always ask before deleting files
+- prefer editing existing files over creating new ones
+- avoid creating documentation files (README.md, *.md) unless explicitly requested
+
+## Code Safety
+- never run code or scripts without explicit user permission
+- always validate user input and sanitize data
+- prefer environment variables for sensitive data (API keys, passwords, database URLs)
+- avoid hardcoding credentials or sensitive information
+
+## Testing & Quality
+- suggest adding tests for new functionality
+- validate that changes don't break existing functionality
+- follow existing code patterns and conventions
+- ensure proper error handling and logging
+
+## Dependencies & Security
+- only suggest well-maintained, secure dependencies
+- avoid adding unnecessary dependencies
+- check for security vulnerabilities in packages
+- keep dependencies up to date
+
+## Development Workflow
+- ask before making breaking changes
+- suggest incremental changes over large refactors
+- maintain backward compatibility when possible
+- document significant changes and their rationale
+
+## Communication
+- explain the reasoning behind suggestions
+- provide alternatives when appropriate
+- ask clarifying questions when requirements are unclear
+- confirm understanding before implementing complex changes
+
+## Database Operations
+- always use uuid datatype as the datatype in the id column
+- always use the name insert_time_utc as column name instead of created_at 

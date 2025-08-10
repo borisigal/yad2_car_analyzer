@@ -94,7 +94,7 @@ def scrape_cars(manufacturer: str = None, model: str = None, max_listings: int =
     print(f"\n🎉 Scraping completed! Total cars found: {len(all_cars_data)}")
     return all_cars_data
 
-def store_cars_in_database(cars_data: List[Dict]) -> int:
+def store_cars_in_database(cars_data: List[Dict], database_type: str) -> int:
     """Store scraped cars data in the database
     
     Args:
@@ -108,7 +108,7 @@ def store_cars_in_database(cars_data: List[Dict]) -> int:
         return 0
     
     print("💾 Storing cars in database...")
-    db = CarDatabase()
+    db = CarDatabase(database_type=database_type)
     
     # Get next run number for raw data tracking
     run_number = db.get_next_run_number()
@@ -150,14 +150,15 @@ def store_cars_in_database(cars_data: List[Dict]) -> int:
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Yad2 Car Analyzer - Scrape and store vehicle data')
-    parser.add_argument('--manufacturer', '-m', 
+    parser.add_argument('--manufacturer', '-m',  default='subaru',
                        help='Manufacturer key (e.g., subaru). If not specified, scrapes all manufacturers.')
-    parser.add_argument('--model', '-md', 
+    parser.add_argument('--model', '-md', default='impreza',
                        help='Model key (e.g., impreza). If not specified, scrapes all models for the manufacturer.')
-    parser.add_argument('--listings', '-l', type=int, default=10,
-                       help='Number of listings to scrape per model (default: 10)')
-    parser.add_argument('--no-reset', action='store_true',
-                       help='Do not reset/truncate database tables before scraping')
+    parser.add_argument('--listings', '-l', type=int, default=1,
+                       help='Number of listings to scrape per model (default: 1)')
+
+    parser.add_argument('--database', '-db', choices=['sqlite', 'supabase'], default='supabase',
+                       help='Database type to use (default: sqlite)')
     
     return parser.parse_args()
 
@@ -170,14 +171,14 @@ def main():
     print(f"Manufacturer: {args.manufacturer or 'All'}")
     print(f"Model: {args.model or 'All'}")
     print(f"Listings per model: {args.listings}")
-    print(f"Reset database: {not args.no_reset}")
+    print(f"Database: {args.database}")
+    print(f"Reset database: Always")
     print("=" * 50)
     
     try:
-        # Step 1: Reset database (unless --no-reset is specified)
-        if not args.no_reset:
-            db = CarDatabase()
-            db.reset_database()
+        # Step 1: Reset database
+        db = CarDatabase(database_type=args.database)
+        db.reset_database()
         
         # Step 2: Scrape cars
         cars_data = scrape_cars(
@@ -188,10 +189,10 @@ def main():
         
         # Step 3: Store cars in database
         if cars_data:
-            stored_count = store_cars_in_database(cars_data)
+            stored_count = store_cars_in_database(cars_data, database_type=args.database)
             
             # Step 4: Enrich data with calculated fields
-            enricher = DataEnricher()
+            enricher = DataEnricher(database_type=args.database)
             enriched_count = enricher.enrich_data()
             
             print(f"\n✅ All steps completed successfully!")
@@ -199,7 +200,10 @@ def main():
             print(f"📊 Stored {stored_count} cars in database")
             print(f"🔧 Enriched {enriched_count} records with mechanical_age")
             print("📊 Check the database for scraped data:")
-            print("   - cars.db (SQLite database)")
+            if args.database == 'sqlite':
+                print("   - cars.db (SQLite database)")
+            else:
+                print("   - Supabase database")
             print("   - Use explore_db.py to view the data")
         else:
             print("\n❌ No cars were scraped!")

@@ -49,3 +49,6 @@ temp/
 
 # VS Code launch configurations
 .vscode/launch.json
+
+# Environment variables
+.env

@@ -1,126 +1,245 @@
 #!/usr/bin/env python3
 """
 Database layer for Yad2 Car Analyzer
-Uses SQLite for persistent storage
+Uses SQLite for local storage and PostgreSQL for Supabase
 """
 
 import sqlite3
 import json
 import uuid
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
-import os
+from environment_variables_loader import load_supabase_credentials
 
 class CarDatabase:
-    def __init__(self, db_path: str = "cars.db"):
+    def __init__(self, db_path: str = "cars.db", database_type: str = "sqlite"):
         self.db_path = db_path
-        self.init_database()
+        self.database_type = database_type
+        
+        if database_type == "supabase":
+            try:
+                import psycopg2
+                # Load credentials from environment variables
+                credentials = load_supabase_credentials()
+                self.supabase_credentials = credentials
+                print(f"🔗 Supabase credentials loaded for PostgreSQL connection")
+            except ImportError:
+                print("❌ psycopg2 library not installed. Please run: pip install psycopg2-binary")
+                raise
+            except ValueError as e:
+                print(f"❌ Configuration Error: {e}")
+                print(" Please ensure your .env file contains all required Supabase credentials")
+                raise
+        else:
+            self.init_database()
     
     def get_connection(self):
         """Get a database connection"""
+        if self.database_type == "supabase":
+            import psycopg2
+            return psycopg2.connect(
+                user=self.supabase_credentials['supabase_user'],
+                password=self.supabase_credentials['supabase_password'],
+                host=self.supabase_credentials['supabase_host'],
+                port=self.supabase_credentials['supabase_port'],
+                dbname=self.supabase_credentials['supabase_dbname']
+            )
         return sqlite3.connect(self.db_path)
     
     def init_database(self):
-        """Initialize the database with proper schema"""
-        conn = sqlite3.connect(self.db_path)
+        """Initialize the database with proper schema for both SQLite and Supabase"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         # Create manufacturers table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS manufacturers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        if self.database_type == "supabase":
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS prod.manufacturers (
+                    id TEXT PRIMARY KEY,
+                    name TEXT UNIQUE NOT NULL,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS manufacturers (
+                    id TEXT PRIMARY KEY,
+                    name TEXT UNIQUE NOT NULL,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
         
         # Create car_listings table with comprehensive data
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS car_listings (
-                id TEXT PRIMARY KEY,
-                manufacturer_id INTEGER NOT NULL,
-                model TEXT,
-                sub_model TEXT,
-                price INTEGER NOT NULL,
-                year INTEGER NOT NULL,
-                age INTEGER NOT NULL,
-                mileage INTEGER,
-                fuel_type TEXT,
-                transmission TEXT,
-                engine_size TEXT,
-                color TEXT,
-                condition TEXT,
-                location TEXT,
-                current_ownership_type TEXT,
-                previous_ownership_type TEXT,
-                current_owner_number INTEGER,
-                listing_url TEXT,
-                listing_title TEXT,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (manufacturer_id) REFERENCES manufacturers (id),
-                UNIQUE(manufacturer_id, price, year, listing_url)
-            )
-        ''')
+        if self.database_type == "supabase":
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS prod.car_listings (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_id TEXT NOT NULL REFERENCES prod.manufacturers(id),
+                    model TEXT,
+                    sub_model TEXT,
+                    price INTEGER NOT NULL,
+                    year INTEGER NOT NULL,
+                    age INTEGER NOT NULL,
+                    mileage INTEGER,
+                    fuel_type TEXT,
+                    transmission TEXT,
+                    engine_size TEXT,
+                    color TEXT,
+                    condition TEXT,
+                    location TEXT,
+                    current_ownership_type TEXT,
+                    previous_ownership_type TEXT,
+                    current_owner_number INTEGER,
+                    listing_url TEXT,
+                    listing_title TEXT,
+                    description TEXT,
+                    mechanical_age DECIMAL(10,2),
+                    mechanical_age_real_age_ratio DECIMAL(10,2),
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS car_listings (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_id TEXT NOT NULL,
+                    model TEXT,
+                    sub_model TEXT,
+                    price INTEGER NOT NULL,
+                    year INTEGER NOT NULL,
+                    age INTEGER NOT NULL,
+                    mileage INTEGER,
+                    fuel_type TEXT,
+                    transmission TEXT,
+                    engine_size TEXT,
+                    color TEXT,
+                    condition TEXT,
+                    location TEXT,
+                    current_ownership_type TEXT,
+                    previous_ownership_type TEXT,
+                    current_owner_number INTEGER,
+                    listing_url TEXT,
+                    listing_title TEXT,
+                    description TEXT,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (manufacturer_id) REFERENCES manufacturers (id),
+                    UNIQUE(manufacturer_id, price, year, listing_url)
+                )
+            ''')
         
+
         # Create scraping_logs table for tracking scraping sessions
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS scraping_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                manufacturer_name TEXT NOT NULL,
-                cars_found INTEGER NOT NULL,
-                scraping_duration REAL,
-                status TEXT NOT NULL,
-                error_message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        if self.database_type == "supabase":
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS prod.scraping_logs (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_name TEXT NOT NULL,
+                    cars_found INTEGER NOT NULL,
+                    scraping_duration REAL,
+                    status TEXT NOT NULL,
+                    error_message TEXT,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scraping_logs (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_name TEXT NOT NULL,
+                    cars_found INTEGER NOT NULL,
+                    scraping_duration REAL,
+                    status TEXT NOT NULL,
+                    error_message TEXT,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
         
         # Create raw_data table for storing unprocessed scraped data
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS raw_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                manufacturer_name TEXT NOT NULL,
-                url TEXT NOT NULL,
-                run_number INTEGER NOT NULL,
-                page_number INTEGER,
-                data_type TEXT NOT NULL,  -- 'html', 'json', 'text'
-                raw_data TEXT NOT NULL,
-                element_count INTEGER,
-                extraction_method TEXT,  -- 'requests', 'selenium'
-                response_status INTEGER,
-                response_time REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        if self.database_type == "supabase":
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS prod.raw_data (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    run_number INTEGER NOT NULL,
+                    page_number INTEGER,
+                    data_type TEXT NOT NULL,
+                    raw_data TEXT NOT NULL,
+                    element_count INTEGER,
+                    extraction_method TEXT,
+                    response_status INTEGER,
+                    response_time REAL,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        else:
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS raw_data (
+                    id TEXT PRIMARY KEY,
+                    manufacturer_name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    run_number INTEGER NOT NULL,
+                    page_number INTEGER,
+                    data_type TEXT NOT NULL,
+                    raw_data TEXT NOT NULL,
+                    element_count INTEGER,
+                    extraction_method TEXT,
+                    response_status INTEGER,
+                    response_time REAL,
+                    insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+        
+        # Create indexes for better performance (Supabase only)
+        if self.database_type == "supabase":
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_car_listings_manufacturer_id ON prod.car_listings(manufacturer_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_car_listings_year ON prod.car_listings(year)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_car_listings_price ON prod.car_listings(price)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_raw_data_manufacturer_name ON prod.raw_data(manufacturer_name)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_raw_data_url ON prod.raw_data(url)')
         
         conn.commit()
         conn.close()
     
-    def add_manufacturer(self, name: str) -> int:
-        """Add a manufacturer and return its ID"""
-        conn = sqlite3.connect(self.db_path)
+    def add_manufacturer(self, name: str):
+        """Add a manufacturer to the database"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute(
-                'INSERT OR IGNORE INTO manufacturers (name) VALUES (?)',
-                (name,)
-            )
-            cursor.execute('SELECT id FROM manufacturers WHERE name = ?', (name,))
-            manufacturer_id = cursor.fetchone()[0]
+            # Generate UUID4 for both SQLite and Supabase
+            manufacturer_id = str(uuid.uuid4())
+            
+            if self.database_type == "supabase":
+                cursor.execute('INSERT INTO prod.manufacturers (id, name) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING', (manufacturer_id, name))
+            else:
+                cursor.execute('INSERT OR IGNORE INTO manufacturers (id, name) VALUES (?, ?)', (manufacturer_id, name))
+            
             conn.commit()
-            return manufacturer_id
+            
+            # Get the manufacturer ID
+            if self.database_type == "supabase":
+                cursor.execute('SELECT id FROM prod.manufacturers WHERE name = %s', (name,))
+            else:
+                cursor.execute('SELECT id FROM manufacturers WHERE name = ?', (name,))
+            
+            result = cursor.fetchone()
+            return result[0] if result else None
         finally:
             conn.close()
     
-    def get_manufacturer_id(self, name: str) -> Optional[int]:
+    def get_manufacturer_id(self, name: str):
         """Get manufacturer ID by name"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('SELECT id FROM manufacturers WHERE name = ?', (name,))
+            if self.database_type == "supabase":
+                cursor.execute('SELECT id FROM prod.manufacturers WHERE name = %s', (name,))
+            else:
+                cursor.execute('SELECT id FROM manufacturers WHERE name = ?', (name,))
+            
             result = cursor.fetchone()
             return result[0] if result else None
         finally:
@@ -128,26 +247,33 @@ class CarDatabase:
     
     def get_all_manufacturers(self) -> List[str]:
         """Get all manufacturer names"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('SELECT name FROM manufacturers ORDER BY name')
+            if self.database_type == "supabase":
+                cursor.execute('SELECT name FROM prod.manufacturers ORDER BY name')
+            else:
+                cursor.execute('SELECT name FROM manufacturers ORDER BY name')
             return [row[0] for row in cursor.fetchall()]
         finally:
             conn.close()
     
     def add_car_listings(self, manufacturer_name: str, cars_data: List[Dict]) -> int:
-        """Add car listings for a manufacturer"""
-        conn = sqlite3.connect(self.db_path)
+        """Add car listings to the database"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             # Get or create manufacturer
             manufacturer_id = self.add_manufacturer(manufacturer_name)
             
+            if not manufacturer_id:
+                print(f"Manufacturer '{manufacturer_name}' not found or added. Cannot add car listings.")
+                return 0
+            
             # Remove existing listings for this manufacturer
-            cursor.execute('DELETE FROM car_listings WHERE manufacturer_id = ?', (manufacturer_id,))
+            cursor.execute('DELETE FROM prod.car_listings WHERE manufacturer_id = %s' if self.database_type == "supabase" else 'DELETE FROM car_listings WHERE manufacturer_id = ?', (manufacturer_id,))
             
             # Add new listings
             added_count = 0
@@ -156,35 +282,68 @@ class CarDatabase:
                     # Generate UUID4 for the id column
                     car_id = str(uuid.uuid4())
                     
-                    cursor.execute('''
-                        INSERT OR IGNORE INTO car_listings 
-                        (id, manufacturer_id, model, sub_model, price, year, age, mileage, 
-                         fuel_type, transmission, engine_size, color, condition, 
-                         location, current_ownership_type, previous_ownership_type, 
-                         current_owner_number, listing_url, listing_title, description)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        car_id,
-                        manufacturer_id,
-                        car.get('model', ''),
-                        car.get('sub_model', ''),
-                        car['price'],
-                        car['year'],
-                        car['age'],
-                        car.get('mileage'),
-                        car.get('fuel_type', ''),
-                        car.get('transmission', ''),
-                        car.get('engine_size', ''),
-                        car.get('color', ''),
-                        car.get('condition', ''),
-                        car.get('location', ''),
-                        car.get('current_ownership_type', ''),
-                        car.get('previous_ownership_type', ''),
-                        car.get('current_owner_number'),
-                        car.get('listing_url', ''),
-                        car.get('listing_title', ''),
-                        car.get('description', '')
-                    ))
+                    if self.database_type == "supabase":
+                        cursor.execute('''
+                            INSERT INTO prod.car_listings 
+                            (id, manufacturer_id, model, sub_model, price, year, age, mileage, 
+                             fuel_type, transmission, engine_size, color, condition, 
+                             location, current_ownership_type, previous_ownership_type, 
+                             current_owner_number, listing_url, listing_title, description, insert_time_utc)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ''', (
+                            car_id,
+                            manufacturer_id,
+                            car.get('model', ''),
+                            car.get('sub_model', ''),
+                            car['price'],
+                            car['year'],
+                            car['age'],
+                            car.get('mileage'),
+                            car.get('fuel_type', ''),
+                            car.get('transmission', ''),
+                            car.get('engine_size', ''),
+                            car.get('color', ''),
+                            car.get('condition', ''),
+                            car.get('location', ''),
+                            car.get('current_ownership_type', ''),
+                            car.get('previous_ownership_type', ''),
+                            car.get('current_owner_number'),
+                            car.get('listing_url', ''),
+                            car.get('listing_title', ''),
+                            car.get('description', ''),
+                            datetime.utcnow()
+                        ))
+                    else:
+                        cursor.execute('''
+                            INSERT OR IGNORE INTO car_listings 
+                            (id, manufacturer_id, model, sub_model, price, year, age, mileage, 
+                             fuel_type, transmission, engine_size, color, condition, 
+                             location, current_ownership_type, previous_ownership_type, 
+                             current_owner_number, listing_url, listing_title, description, insert_time_utc)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            car_id,
+                            manufacturer_id,
+                            car.get('model', ''),
+                            car.get('sub_model', ''),
+                            car['price'],
+                            car['year'],
+                            car['age'],
+                            car.get('mileage'),
+                            car.get('fuel_type', ''),
+                            car.get('transmission', ''),
+                            car.get('engine_size', ''),
+                            car.get('color', ''),
+                            car.get('condition', ''),
+                            car.get('location', ''),
+                            car.get('current_ownership_type', ''),
+                            car.get('previous_ownership_type', ''),
+                            car.get('current_owner_number'),
+                            car.get('listing_url', ''),
+                            car.get('listing_title', ''),
+                            car.get('description', ''),
+                            datetime.utcnow()
+                        ))
                     added_count += cursor.rowcount
                 except Exception as e:
                     print(f"Error adding car listing: {e}")
@@ -197,7 +356,7 @@ class CarDatabase:
     
     def get_car_listings(self, manufacturer_name: str) -> List[Dict]:
         """Get car listings for a manufacturer"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
@@ -206,45 +365,23 @@ class CarDatabase:
                 return []
             
             cursor.execute('''
-                SELECT id, model, sub_model, price, year, age, mileage, fuel_type, 
-                       transmission, engine_size, color, condition, location,
-                       current_ownership_type, previous_ownership_type,
-                       current_owner_number, listing_url, listing_title, description
-                FROM car_listings 
-                WHERE manufacturer_id = ?
-                ORDER BY year DESC, price DESC
+                SELECT * FROM prod.car_listings 
+                WHERE manufacturer_id = %s 
+                ORDER BY insert_time_utc DESC
+            ''' if self.database_type == "supabase" else '''
+                SELECT * FROM car_listings 
+                WHERE manufacturer_id = ? 
+                ORDER BY insert_time_utc DESC
             ''', (manufacturer_id,))
             
-            return [
-                {
-                    'id': row[0],
-                    'model': row[1],
-                    'sub_model': row[2],
-                    'price': row[3],
-                    'year': row[4],
-                    'age': row[5],
-                    'mileage': row[6],
-                    'fuel_type': row[7],
-                    'transmission': row[8],
-                    'engine_size': row[9],
-                    'color': row[10],
-                    'condition': row[11],
-                    'location': row[12],
-                    'current_ownership_type': row[13],
-                    'previous_ownership_type': row[14],
-                    'current_owner_number': row[15],
-                    'listing_url': row[16],
-                    'listing_title': row[17],
-                    'description': row[18]
-                }
-                for row in cursor.fetchall()
-            ]
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
         finally:
             conn.close()
     
     def get_car_statistics(self, manufacturer_name: str) -> Dict:
         """Get statistics for a manufacturer"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
@@ -256,64 +393,99 @@ class CarDatabase:
                 SELECT 
                     COUNT(*) as total_cars,
                     AVG(price) as avg_price,
-                    AVG(age) as avg_age,
                     MIN(price) as min_price,
                     MAX(price) as max_price,
-                    MIN(age) as min_age,
-                    MAX(age) as max_age
+                    AVG(year) as avg_year,
+                    AVG(age) as avg_age,
+                    AVG(mileage) as avg_mileage
+                FROM prod.car_listings 
+                WHERE manufacturer_id = %s
+            ''' if self.database_type == "supabase" else '''
+                SELECT 
+                    COUNT(*) as total_cars,
+                    AVG(price) as avg_price,
+                    MIN(price) as min_price,
+                    MAX(price) as max_price,
+                    AVG(year) as avg_year,
+                    AVG(age) as avg_age,
+                    AVG(mileage) as avg_mileage
                 FROM car_listings 
                 WHERE manufacturer_id = ?
             ''', (manufacturer_id,))
             
-            row = cursor.fetchone()
-            if row and row[0] > 0:
+            result = cursor.fetchone()
+            if result:
                 return {
-                    'total_cars': row[0],
-                    'avg_price': int(row[1]) if row[1] else 0,
-                    'avg_age': round(row[2], 1) if row[2] else 0,
-                    'price_range': f"{int(row[3])} - {int(row[4])}" if row[3] and row[4] else "0 - 0",
-                    'age_range': f"{int(row[5])} - {int(row[6])}" if row[5] and row[6] else "0 - 0"
+                    'total_cars': result[0],
+                    'avg_price': result[1] or 0,
+                    'min_price': result[2] or 0,
+                    'max_price': result[3] or 0,
+                    'avg_year': result[4] or 0,
+                    'avg_age': result[5] or 0,
+                    'avg_mileage': result[6] or 0
                 }
             return {}
         finally:
             conn.close()
     
     def save_raw_data(self, manufacturer_name: str, cars_data: List[Dict], run_number: int) -> int:
-        """Save raw scraped data for a manufacturer"""
-        conn = sqlite3.connect(self.db_path)
+        """Save raw scraped data to the database"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            # Remove existing raw data for this manufacturer and run number
-            cursor.execute('DELETE FROM raw_data WHERE manufacturer_name = ? AND run_number = ?', 
-                         (manufacturer_name, run_number))
-            
-            # Prepare and add new raw data entries
             added_count = 0
-            for i, car in enumerate(cars_data):
-                if 'raw_html' in car:
-                    try:
+            for car in cars_data:
+                try:
+                    # Generate UUID4 for the id column
+                    raw_data_id = str(uuid.uuid4())
+                    
+                    if self.database_type == "supabase":
                         cursor.execute('''
-                            INSERT OR IGNORE INTO raw_data 
-                            (manufacturer_name, url, run_number, page_number, data_type, 
-                             raw_data, element_count, extraction_method, response_status, response_time)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO prod.raw_data 
+                            (id, manufacturer_name, url, run_number, page_number, data_type, 
+                             raw_data, element_count, extraction_method, response_status, 
+                             response_time, insert_time_utc)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (
+                            raw_data_id,
                             manufacturer_name,
                             car.get('listing_url', ''),
                             run_number,
-                            i + 1,
-                            'listing_page',
+                            car.get('page_number', 1),
+                            'html',
                             car.get('raw_html', ''),
-                            len(car),  # Number of extracted fields
-                            'beautifulsoup',
+                            car.get('element_count', 0),
+                            car.get('extraction_method', 'requests'),
                             car.get('response_status', 200),
-                            car.get('response_time', 0.0)
+                            car.get('response_time', 0.0),
+                            datetime.utcnow()
                         ))
-                        added_count += cursor.rowcount
-                    except Exception as e:
-                        print(f"Error saving raw data: {e}")
-                        continue
+                    else:
+                        cursor.execute('''
+                            INSERT INTO raw_data 
+                            (id, manufacturer_name, url, run_number, page_number, data_type, 
+                             raw_data, element_count, extraction_method, response_status, 
+                             response_time, insert_time_utc)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            raw_data_id,
+                            manufacturer_name,
+                            car.get('listing_url', ''),
+                            run_number,
+                            car.get('page_number', 1),
+                            'html',
+                            car.get('raw_html', ''),
+                            car.get('element_count', 0),
+                            car.get('extraction_method', 'requests'),
+                            car.get('response_status', 200),
+                            car.get('response_time', 0.0),
+                            datetime.utcnow()
+                        ))
+                    added_count += 1
+                except Exception as e:
+                    print(f"Error saving raw data: {e}")
+                    continue
             
             conn.commit()
             return added_count
@@ -323,94 +495,130 @@ class CarDatabase:
     def log_scraping_session(self, manufacturer_name: str, cars_found: int, 
                            duration: float, status: str, error_message: str = None):
         """Log a scraping session"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                INSERT INTO scraping_logs 
-                (manufacturer_name, cars_found, scraping_duration, status, error_message)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (manufacturer_name, cars_found, duration, status, error_message))
+            # Generate UUID4 for the id column
+            log_id = str(uuid.uuid4())
+            
+            if self.database_type == "supabase":
+                cursor.execute('''
+                    INSERT INTO prod.scraping_logs 
+                    (id, manufacturer_name, cars_found, scraping_duration, status, error_message, insert_time_utc)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ''', (log_id, manufacturer_name, cars_found, duration, status, error_message, datetime.utcnow()))
+            else:
+                cursor.execute('''
+                    INSERT INTO scraping_logs 
+                    (id, manufacturer_name, cars_found, scraping_duration, status, error_message, insert_time_utc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (log_id, manufacturer_name, cars_found, duration, status, error_message, datetime.utcnow()))
             conn.commit()
         finally:
             conn.close()
     
     def get_next_run_number(self) -> int:
         """Get the next run number for scraping sessions"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('SELECT MAX(run_number) FROM raw_data')
+            if self.database_type == "supabase":
+                cursor.execute('SELECT MAX(run_number) FROM prod.raw_data')
+            else:
+                cursor.execute('SELECT MAX(run_number) FROM raw_data')
             result = cursor.fetchone()
             return (result[0] or 0) + 1
         finally:
             conn.close()
     
     def get_scraping_status(self) -> Dict:
-        """Get overall scraping status"""
-        conn = sqlite3.connect(self.db_path)
+        """Get scraping status and statistics"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                SELECT 
-                    COUNT(DISTINCT manufacturer_name) as manufacturers_scraped,
-                    SUM(cars_found) as total_cars,
-                    MAX(created_at) as last_scraping
-                FROM scraping_logs 
-                WHERE status = 'success'
-            ''')
+            # Get recent scraping sessions
+            if self.database_type == "supabase":
+                cursor.execute('''
+                    SELECT * FROM prod.scraping_logs 
+                    ORDER BY insert_time_utc DESC 
+                    LIMIT 10
+                ''')
+            else:
+                cursor.execute('''
+                    SELECT * FROM scraping_logs 
+                    ORDER BY insert_time_utc DESC 
+                    LIMIT 10
+                ''')
             
-            row = cursor.fetchone()
+            columns = [description[0] for description in cursor.description]
+            recent_sessions = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            # Get total cars
+            if self.database_type == "supabase":
+                cursor.execute('SELECT COUNT(*) FROM prod.car_listings')
+            else:
+                cursor.execute('SELECT COUNT(*) FROM car_listings')
+            total_cars = cursor.fetchone()[0]
+            
             return {
-                'manufacturers_scraped': row[0] if row[0] else 0,
-                'total_cars': row[1] if row[1] else 0,
-                'last_scraping': row[2] if row[2] else None
+                'recent_sessions': recent_sessions,
+                'total_cars': total_cars,
+                'database_type': self.database_type
             }
         finally:
             conn.close()
     
     def truncate_car_listings(self):
-        """Truncate the car_listings table"""
-        conn = sqlite3.connect(self.db_path)
+        """Truncate car_listings table"""
+        conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute('DELETE FROM car_listings')
+            if self.database_type == "supabase":
+                cursor.execute('DELETE FROM prod.car_listings')
+            else:
+                cursor.execute('DELETE FROM car_listings')
             conn.commit()
-            print(f"🗑️ Truncated car_listings table")
+            print("✅ Truncated car_listings table")
         finally:
             conn.close()
     
     def reset_database(self):
-        """Reset all database tables by truncating them"""
-        print("🗑️ Truncating database tables...")
-        
-        # Truncate all tables instead of dropping them
+        """Reset the database by dropping and recreating all tables"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Truncate each table
-        tables_to_truncate = ['manufacturers', 'car_listings', 'scraping_logs', 'raw_data']
-        for table_name in tables_to_truncate:
-            cursor.execute(f"DELETE FROM {table_name}")
-            print(f"   Truncated table: {table_name}")
-        
-        conn.commit()
-        conn.close()
-        
-        # VACUUM must be run outside of a transaction
         try:
-            conn = self.get_connection()
-            conn.execute('VACUUM;')
+            if self.database_type == "supabase":
+                # For Supabase, drop and recreate tables to ensure correct schema
+                cursor.execute('DROP TABLE IF EXISTS prod.car_listings CASCADE')
+                cursor.execute('DROP TABLE IF EXISTS prod.raw_data CASCADE')
+                cursor.execute('DROP TABLE IF EXISTS prod.scraping_logs CASCADE')
+                cursor.execute('DROP TABLE IF EXISTS prod.manufacturers CASCADE')
+            else:
+                # For SQLite, drop and recreate tables to ensure correct schema
+                cursor.execute('DROP TABLE IF EXISTS car_listings')
+                cursor.execute('DROP TABLE IF EXISTS raw_data')
+                cursor.execute('DROP TABLE IF EXISTS scraping_logs')
+                cursor.execute('DROP TABLE IF EXISTS manufacturers')
+            
+            conn.commit()
             conn.close()
-            print("   🧹 Database vacuumed to reclaim space")
-        except Exception as e:
-            print(f"   ⚠️ VACUUM failed (this is normal): {e}")
-        
-        print("✅ Database truncation completed!")
-
-# Global database instance
-db = CarDatabase() 
+            
+            # Recreate tables with correct schema using unified init_database
+            self.init_database()
+            print("✅ Reset database")
+            
+        finally:
+            # SQLite connections don't have a 'closed' attribute
+            if self.database_type == "supabase":
+                if not conn.closed:
+                    conn.close()
+            else:
+                try:
+                    conn.close()
+                except:
+                    pass  # Connection might already be closed
