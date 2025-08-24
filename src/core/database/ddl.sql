@@ -17,6 +17,7 @@ CREATE TABLE car_listings (
     price INTEGER NOT NULL,
     year INTEGER NOT NULL,
     age INTEGER NOT NULL,
+    date_on_road TEXT,
     mileage INTEGER,
     fuel_type TEXT,
     transmission TEXT,
@@ -32,6 +33,7 @@ CREATE TABLE car_listings (
     description TEXT,
     mechanical_age DECIMAL(10,2),
     mechanical_age_real_age_ratio DECIMAL(10,2),
+    age_in_months INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

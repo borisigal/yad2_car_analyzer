@@ -10,10 +10,10 @@ import uuid
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
-from environment_variables_loader import load_supabase_credentials
+from ..config.environment_variables_loader import load_supabase_credentials
 
 class CarDatabase:
-    def __init__(self, db_path: str = "cars.db", database_type: str = "sqlite"):
+    def __init__(self, db_path: str = "data/cars.db", database_type: str = "sqlite"):
         self.db_path = db_path
         self.database_type = database_type
         
@@ -21,7 +21,7 @@ class CarDatabase:
             try:
                 import psycopg2
                 # Load credentials from environment variables
-                credentials = load_supabase_credentials()
+                credentials = load_supabase_loader()
                 self.supabase_credentials = credentials
                 print(f"🔗 Supabase credentials loaded for PostgreSQL connection")
             except ImportError:
@@ -81,6 +81,7 @@ class CarDatabase:
                     price INTEGER NOT NULL,
                     year INTEGER NOT NULL,
                     age INTEGER NOT NULL,
+                    date_on_road TEXT,
                     mileage INTEGER,
                     fuel_type TEXT,
                     transmission TEXT,
@@ -96,6 +97,7 @@ class CarDatabase:
                     description TEXT,
                     mechanical_age DECIMAL(10,2),
                     mechanical_age_real_age_ratio DECIMAL(10,2),
+                    age_in_months INTEGER,
                     insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -109,6 +111,7 @@ class CarDatabase:
                     price INTEGER NOT NULL,
                     year INTEGER NOT NULL,
                     age INTEGER NOT NULL,
+                    date_on_road TEXT,
                     mileage INTEGER,
                     fuel_type TEXT,
                     transmission TEXT,
@@ -122,6 +125,7 @@ class CarDatabase:
                     listing_url TEXT,
                     listing_title TEXT,
                     description TEXT,
+                    age_in_months INTEGER,
                     insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers (id),
                     UNIQUE(manufacturer_id, price, year, listing_url)
@@ -285,11 +289,11 @@ class CarDatabase:
                     if self.database_type == "supabase":
                         cursor.execute('''
                             INSERT INTO prod.car_listings 
-                            (id, manufacturer_id, model, sub_model, price, year, age, mileage, 
+                            (id, manufacturer_id, model, sub_model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
                              current_owner_number, listing_url, listing_title, description, insert_time_utc)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (
                             car_id,
                             manufacturer_id,
@@ -298,6 +302,7 @@ class CarDatabase:
                             car['price'],
                             car['year'],
                             car['age'],
+                            car.get('date_on_road'),
                             car.get('mileage'),
                             car.get('fuel_type', ''),
                             car.get('transmission', ''),
@@ -316,11 +321,11 @@ class CarDatabase:
                     else:
                         cursor.execute('''
                             INSERT OR IGNORE INTO car_listings 
-                            (id, manufacturer_id, model, sub_model, price, year, age, mileage, 
+                            (id, manufacturer_id, model, sub_model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
                              current_owner_number, listing_url, listing_title, description, insert_time_utc)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             car_id,
                             manufacturer_id,
@@ -329,6 +334,7 @@ class CarDatabase:
                             car['price'],
                             car['year'],
                             car['age'],
+                            car.get('date_on_road'),
                             car.get('mileage'),
                             car.get('fuel_type', ''),
                             car.get('transmission', ''),

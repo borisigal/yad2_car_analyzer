@@ -30,7 +30,10 @@ class VehicleScraper:
     def load_manufacturers(self) -> Dict:
         """Load manufacturer data from YAML file"""
         try:
-            with open('manufacturers.yml', 'r', encoding='utf-8') as file:
+            # Get the path to the config directory relative to this file
+            import os
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'manufacturers.yml')
+            with open(config_path, 'r', encoding='utf-8') as file:
                 return yaml.safe_load(file)
         except FileNotFoundError:
             print("❌ manufacturers.yml not found")
@@ -135,19 +138,36 @@ class VehicleScraper:
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Look for vehicle links with data-nagish="feed-item-base-link"
             listing_urls = []
             
-            # Method 1: Look for feed item links
-            vehicle_links = soup.find_all('a', attrs={'data-nagish': 'feed-item-base-link'})
-            for link in vehicle_links:
+            # Method 1: Look for any links containing '/item/' (most reliable)
+            links = soup.find_all('a', href=True)
+            for link in links:
                 href = link.get('href')
-                if href and 'item/' in href:
-                    full_url = urljoin('https://www.yad2.co.il', href)
+                if href and '/item/' in href:
+                    # Clean the URL and make it absolute
+                    if href.startswith('/'):
+                        full_url = urljoin('https://www.yad2.co.il', href)
+                    elif href.startswith('http'):
+                        full_url = href
+                    else:
+                        full_url = urljoin('https://www.yad2.co.il', '/' + href)
+                    
+                    # Add any item URL (not just vehicle-specific ones)
                     if full_url not in listing_urls:
                         listing_urls.append(full_url)
             
-            # Method 2: Look for elements with data-testid containing item IDs
+            # Method 2: Look for feed item links with data-nagish attribute
+            if len(listing_urls) == 0:
+                vehicle_links = soup.find_all('a', attrs={'data-nagish': 'feed-item-base-link'})
+                for link in vehicle_links:
+                    href = link.get('href')
+                    if href and 'item/' in href:
+                        full_url = urljoin('https://www.yad2.co.il', href)
+                        if full_url not in listing_urls:
+                            listing_urls.append(full_url)
+            
+            # Method 3: Look for elements with data-testid containing item IDs
             if len(listing_urls) == 0:
                 testid_elements = soup.find_all(attrs={'data-testid': re.compile(r'^[a-zA-Z0-9]+$')})
                 for element in testid_elements:
@@ -162,16 +182,7 @@ class VehicleScraper:
                                 if full_url not in listing_urls:
                                     listing_urls.append(full_url)
             
-            # Method 3: Fallback to general item links
-            if len(listing_urls) == 0:
-                links = soup.find_all('a', href=True)
-                for link in links:
-                    href = link.get('href')
-                    if href and '/vehicles/item/' in href:
-                        full_url = urljoin('https://www.yad2.co.il', href)
-                        if full_url not in listing_urls:
-                            listing_urls.append(full_url)
-            
+            print(f"🔍 Found {len(listing_urls)} listing URLs on page")
             return listing_urls
             
         except Exception as e:
@@ -186,21 +197,40 @@ class VehicleScraper:
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Look for vehicle links with data-nagish="feed-item-base-link"
             listing_urls = []
             
-            # Method 1: Look for feed item links
-            vehicle_links = soup.find_all('a', attrs={'data-nagish': 'feed-item-base-link'})
-            for link in vehicle_links:
+            # Method 1: Look for any links containing '/item/' (most reliable)
+            links = soup.find_all('a', href=True)
+            for link in links:
                 href = link.get('href')
-                if href and 'item/' in href:
-                    full_url = urljoin('https://www.yad2.co.il', href)
+                if href and '/item/' in href:
+                    # Clean the URL and make it absolute
+                    if href.startswith('/'):
+                        full_url = urljoin('https://www.yad2.co.il', href)
+                    elif href.startswith('http'):
+                        full_url = href
+                    else:
+                        full_url = urljoin('https://www.yad2.co.il', '/' + href)
+                    
+                    # Add any item URL (not just vehicle-specific ones)
                     if full_url not in listing_urls:
                         listing_urls.append(full_url)
                         if len(listing_urls) >= max_listings:
                             break
             
-            # Method 2: Look for elements with data-testid containing item IDs
+            # Method 2: Look for feed item links with data-nagish attribute
+            if len(listing_urls) < max_listings:
+                vehicle_links = soup.find_all('a', attrs={'data-nagish': 'feed-item-base-link'})
+                for link in vehicle_links:
+                    href = link.get('href')
+                    if href and 'item/' in href:
+                        full_url = urljoin('https://www.yad2.co.il', href)
+                        if full_url not in listing_urls:
+                            listing_urls.append(full_url)
+                            if len(listing_urls) >= max_listings:
+                                break
+            
+            # Method 3: Look for elements with data-testid containing item IDs
             if len(listing_urls) < max_listings:
                 testid_elements = soup.find_all(attrs={'data-testid': re.compile(r'^[a-zA-Z0-9]+$')})
                 for element in testid_elements:
@@ -216,18 +246,6 @@ class VehicleScraper:
                                     listing_urls.append(full_url)
                                     if len(listing_urls) >= max_listings:
                                         break
-            
-            # Method 3: Fallback to general item links
-            if len(listing_urls) < max_listings:
-                links = soup.find_all('a', href=True)
-                for link in links:
-                    href = link.get('href')
-                    if href and '/vehicles/item/' in href:
-                        full_url = urljoin('https://www.yad2.co.il', href)
-                        if full_url not in listing_urls:
-                            listing_urls.append(full_url)
-                            if len(listing_urls) >= max_listings:
-                                break
             
             return listing_urls[:max_listings]
             
@@ -341,12 +359,49 @@ class VehicleScraper:
             return None
     
     def extract_price(self, price_text: str) -> Optional[int]:
-        """Extract price from price text"""
+        """Extract price from price text, handling cases with multiple numbers"""
         try:
-            # Remove currency symbol and commas
-            price_clean = re.sub(r'[^\d]', '', price_text)
-            return int(price_clean) if price_clean else None
-        except:
+            # Remove currency symbols, commas, and extra whitespace
+            price_clean = re.sub(r'[^\d\s]', '', price_text).strip()
+            
+            # Split by whitespace to separate multiple numbers
+            numbers = price_clean.split()
+            
+            if not numbers:
+                return None
+            
+            # Convert all numbers to integers
+            price_values = []
+            for num_str in numbers:
+                try:
+                    price_values.append(int(num_str))
+                except ValueError:
+                    continue
+            
+            if not price_values:
+                return None
+            
+            # If there's only one number, return it
+            if len(price_values) == 1:
+                return price_values[0]
+            
+            # If there are multiple numbers, use heuristics to find the real price
+            # Typically, the real car price is the larger number
+            # Funding options are usually smaller (4-5 digits)
+            # Car prices are usually 5-6 digits (50,000 - 500,000+)
+            
+            # Sort by length first (longer numbers are usually the real price)
+            price_values.sort(key=lambda x: len(str(x)), reverse=True)
+            
+            # If the longest number is significantly larger, use it
+            if len(str(price_values[0])) > len(str(price_values[1])):
+                return price_values[0]
+            
+            # Otherwise, use the largest number
+            return max(price_values)
+            
+        except Exception as e:
+            print(f"⚠️ Error extracting price from '{price_text}': {e}")
             return None
     
     def extract_model_info(self, title_text: str) -> tuple:
@@ -437,6 +492,25 @@ class VehicleScraper:
                 fuel_text = next_dt.get_text().strip()
                 car_data['fuel_type'] = fuel_text
                 break
+        
+        # Extract date_on_road from the specifications table
+        # Look for the specific structure: <dd>תאריך עליה לכביש</dd><dt>01/2023</dt>
+        date_on_road_labels = soup.find_all('dd', text=re.compile(r'תאריך עליה לכביש'))
+        for label in date_on_road_labels:
+            # Find the corresponding value in the next <dt> element
+            next_dt = label.find_next_sibling('dt')
+            if next_dt:
+                date_on_road_text = next_dt.get_text().strip()
+                # Parse the date format MM/YYYY
+                date_match = re.search(r'(\d{2}/\d{4})', date_on_road_text)
+                if date_match:
+                    car_data['date_on_road'] = date_match.group(1)
+                    # Extract year for backward compatibility
+                    year_match = re.search(r'/(\d{4})', date_match.group(1))
+                    if year_match:
+                        car_data['year'] = int(year_match.group(1))
+                        car_data['age'] = datetime.now().year - car_data['year']
+                    break
         
         # Extract transmission from the details table structure
         # Look for the specific structure: <dd>תיבת הילוכים</dd><dt>אוטומטי</dt>

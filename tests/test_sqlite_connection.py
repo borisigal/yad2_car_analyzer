@@ -6,12 +6,15 @@ Test SQLite database connection and basic functionality
 
 import sqlite3
 import os
-from database import CarDatabase
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+from core.database.database import CarDatabase
 
 def test_sqlite_connection():
     """Test SQLite database connection and basic functionality"""
     
-    db_path = 'cars.db'
+    db_path = 'data/cars.db'
     
     if not os.path.exists(db_path):
         print("❌ Database not found! Run the scraper first:")

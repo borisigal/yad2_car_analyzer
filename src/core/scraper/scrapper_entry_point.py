@@ -7,9 +7,9 @@ This script resets the database, scrapes fresh data, and populates the database.
 import os
 import sys
 import argparse
-from database import CarDatabase
-from vehicle_scraper import VehicleScraper
-from etl import DataEnricher
+from ..database.database import CarDatabase
+from .vehicle_scraper import VehicleScraper
+from ..etl.etl import DataEnricher
 from typing import List, Dict
 
 

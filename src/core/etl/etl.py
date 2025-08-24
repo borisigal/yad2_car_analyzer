@@ -7,13 +7,13 @@ Handles data enrichment and transformation operations
 import sqlite3
 import os
 from typing import Optional, Dict, Any
-from environment_variables_loader import load_supabase_credentials
-from database import CarDatabase
+from ..config.environment_variables_loader import load_supabase_credentials
+from ..database.database import CarDatabase
 
 class DataEnricher:
     """Handles data enrichment operations on the database"""
     
-    def __init__(self, db_path: str = "cars.db", database_type: str = "sqlite"):
+    def __init__(self, db_path: str = "data/cars.db", database_type: str = "sqlite"):
         self.db_path = db_path
         self.database_type = database_type
         
@@ -56,7 +56,9 @@ class DataEnricher:
                 drop_if_exists = "DROP TABLE IF EXISTS"
                 # PostgreSQL syntax for mechanical age calculation
                 mechanical_age_sql = "ROUND((COALESCE(mileage, 0)::NUMERIC) / 15000.0, 2)"
-                ratio_sql = "ROUND((COALESCE(mileage, 0)::NUMERIC / 15000.0) / GREATEST(COALESCE(age, 1), 1)::NUMERIC, 2)"
+                ratio_sql = "ROUND((COALESCE(mileage, 0)::NUMERIC / 15000.0)*12 / GREATEST(COALESCE(EXTRACT(YEAR FROM AGE(NOW(), TO_DATE(date_on_road, 'MM/YYYY'))) * 12 + EXTRACT(MONTH FROM AGE(NOW(), TO_DATE(date_on_road, 'MM/YYYY'))), 1), 1)::NUMERIC, 2)"
+                # PostgreSQL syntax for age_in_months calculation
+                age_in_months_sql = "EXTRACT(YEAR FROM AGE(NOW(), TO_DATE(date_on_road, 'MM/YYYY'))) * 12 + EXTRACT(MONTH FROM AGE(NOW(), TO_DATE(date_on_road, 'MM/YYYY')))"
             else:
                 table_name = "car_listings"
                 temp_table_name = "car_listings_enriched"
@@ -65,7 +67,9 @@ class DataEnricher:
                 drop_if_exists = "DROP TABLE IF EXISTS"
                 # SQLite syntax for mechanical age calculation
                 mechanical_age_sql = "ROUND(CAST(COALESCE(mileage, 0) AS REAL) / 15000.0, 2)"
-                ratio_sql = "ROUND((CAST(COALESCE(mileage, 0) AS REAL) / 15000.0) / CAST(COALESCE(age, 1) AS REAL), 2)"
+                ratio_sql = "ROUND((CAST(COALESCE(mileage, 0) AS REAL) / 15000.0)*12 / CAST(MAX(COALESCE(ROUND((julianday('now') - julianday(substr(date_on_road, 4, 4) || '-' || substr(date_on_road, 1, 2) || '-01')) / 30.44, 0), 1), 1) AS REAL), 2)"
+                # SQLite syntax for age_in_months calculation
+                age_in_months_sql = "ROUND((julianday('now') - julianday(substr(date_on_road, 4, 4) || '-' || substr(date_on_road, 1, 2) || '-01')) / 30.44, 0)"
             
             # Drop temp table if exists
             cursor.execute(f'{drop_if_exists} {temp_table_name}')
@@ -81,6 +85,8 @@ class DataEnricher:
                     price,
                     year,
                     age,
+                    date_on_road,
+                    {age_in_months_sql} AS age_in_months,
                     mileage,
                     {mechanical_age_sql} AS mechanical_age,
                     {ratio_sql} AS mechanical_age_real_age_ratio,
@@ -138,7 +144,7 @@ class DataEnricher:
         return self.enrich_data_with_mechanical_age()
 
 def main():
-    enricher = DataEnricher(database_type="sqlite")
+    enricher = DataEnricher(database_type="supabase")
     enricher.enrich_data()
 
 if __name__ == "__main__":
