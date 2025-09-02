@@ -7,10 +7,18 @@ This script resets the database, scrapes fresh data, and populates the database.
 import os
 import sys
 import argparse
-from ..database.database import CarDatabase
-from .vehicle_scraper import VehicleScraper
-from ..etl.etl import DataEnricher
 from typing import List, Dict
+
+# Add the src directory to the Python path if not already there
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..', '..', '..')
+src_path = os.path.abspath(project_root)
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+from src.core.database.database import CarDatabase
+from src.core.scraper.vehicle_scraper import VehicleScraper
+from src.core.etl.etl import DataEnricher
 
 
 
@@ -164,6 +172,7 @@ def parse_args():
 
 def main():
     """Main execution function"""
+    
     args = parse_args()
     
     print("🚀 Yad2 Car Analyzer - Fresh Scrape")
@@ -199,6 +208,16 @@ def main():
             print(f"📊 Scraped {len(cars_data)} cars total")
             print(f"📊 Stored {stored_count} cars in database")
             print(f"🔧 Enriched {enriched_count} records with mechanical_age")
+            
+            # Calculate and display total execution time
+            print("\n" + "=" * 50)
+            print("⏱️  EXECUTION SUMMARY")
+            print("=" * 50)
+            print(f"📊 Scraped {len(cars_data)} cars total")
+            print(f"📊 Stored {stored_count} cars in database")
+            print(f"🔧 Enriched {enriched_count} records with mechanical_age")
+            print("=" * 50)
+            
             print("📊 Check the database for scraped data:")
             if args.database == 'sqlite':
                 print("   - cars.db (SQLite database)")

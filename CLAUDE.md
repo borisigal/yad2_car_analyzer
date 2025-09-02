@@ -1,0 +1,2 @@
+- from now on use 20 listings as a default for running a scraping
+- remember what i wrote in claude.md

@@ -6,9 +6,18 @@ Handles data enrichment and transformation operations
 
 import sqlite3
 import os
+import sys
 from typing import Optional, Dict, Any
-from ..config.environment_variables_loader import load_supabase_credentials
-from ..database.database import CarDatabase
+
+# Add the src directory to the Python path if not already there
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..', '..', '..')
+src_path = os.path.abspath(project_root)
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+from src.core.config.environment_variables_loader import load_supabase_credentials
+from src.core.database.database import CarDatabase
 
 class DataEnricher:
     """Handles data enrichment operations on the database"""
@@ -80,8 +89,8 @@ class DataEnricher:
                 SELECT 
                     id,
                     manufacturer_id,
+                    manufacturer,
                     model,
-                    sub_model,
                     price,
                     year,
                     age,

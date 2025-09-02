@@ -8,9 +8,18 @@ import sqlite3
 import json
 import uuid
 import os
+import sys
 from datetime import datetime
 from typing import List, Dict, Optional
-from ..config.environment_variables_loader import load_supabase_credentials
+
+# Add the src directory to the Python path if not already there
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..', '..', '..')
+src_path = os.path.abspath(project_root)
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+from src.core.config.environment_variables_loader import load_supabase_credentials
 
 class CarDatabase:
     def __init__(self, db_path: str = "data/cars.db", database_type: str = "sqlite"):
@@ -21,7 +30,7 @@ class CarDatabase:
             try:
                 import psycopg2
                 # Load credentials from environment variables
-                credentials = load_supabase_loader()
+                credentials = load_supabase_credentials()
                 self.supabase_credentials = credentials
                 print(f"🔗 Supabase credentials loaded for PostgreSQL connection")
             except ImportError:
@@ -76,9 +85,9 @@ class CarDatabase:
                 CREATE TABLE IF NOT EXISTS prod.car_listings (
                     id TEXT PRIMARY KEY,
                     manufacturer_id TEXT NOT NULL REFERENCES prod.manufacturers(id),
+                    manufacturer TEXT,
                     model TEXT,
-                    sub_model TEXT,
-                    price INTEGER NOT NULL,
+                    price INTEGER,
                     year INTEGER NOT NULL,
                     age INTEGER NOT NULL,
                     date_on_road TEXT,
@@ -92,7 +101,7 @@ class CarDatabase:
                     current_ownership_type TEXT,
                     previous_ownership_type TEXT,
                     current_owner_number INTEGER,
-                    listing_url TEXT,
+                    listing_url TEXT UNIQUE,
                     listing_title TEXT,
                     description TEXT,
                     mechanical_age DECIMAL(10,2),
@@ -106,9 +115,9 @@ class CarDatabase:
                 CREATE TABLE IF NOT EXISTS car_listings (
                     id TEXT PRIMARY KEY,
                     manufacturer_id TEXT NOT NULL,
+                    manufacturer TEXT,
                     model TEXT,
-                    sub_model TEXT,
-                    price INTEGER NOT NULL,
+                    price INTEGER,
                     year INTEGER NOT NULL,
                     age INTEGER NOT NULL,
                     date_on_road TEXT,
@@ -289,17 +298,18 @@ class CarDatabase:
                     if self.database_type == "supabase":
                         cursor.execute('''
                             INSERT INTO prod.car_listings 
-                            (id, manufacturer_id, model, sub_model, price, year, age, date_on_road, mileage, 
+                            (id, manufacturer_id, manufacturer, model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
                              current_owner_number, listing_url, listing_title, description, insert_time_utc)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (listing_url) DO NOTHING
                         ''', (
                             car_id,
                             manufacturer_id,
+                            car.get('manufacturer', ''),
                             car.get('model', ''),
-                            car.get('sub_model', ''),
-                            car['price'],
+                            car.get('price'),
                             car['year'],
                             car['age'],
                             car.get('date_on_road'),
@@ -321,7 +331,7 @@ class CarDatabase:
                     else:
                         cursor.execute('''
                             INSERT OR IGNORE INTO car_listings 
-                            (id, manufacturer_id, model, sub_model, price, year, age, date_on_road, mileage, 
+                            (id, manufacturer_id, manufacturer, model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
                              current_owner_number, listing_url, listing_title, description, insert_time_utc)
@@ -329,9 +339,9 @@ class CarDatabase:
                         ''', (
                             car_id,
                             manufacturer_id,
+                            car.get('manufacturer', ''),
                             car.get('model', ''),
-                            car.get('sub_model', ''),
-                            car['price'],
+                            car.get('price'),
                             car['year'],
                             car['age'],
                             car.get('date_on_road'),
