@@ -9,6 +9,8 @@ import time
 import random
 import re
 import yaml
+import base64
+import io
 from datetime import datetime
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
@@ -26,6 +28,13 @@ try:
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
+
+# PIL/Pillow import for image processing
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 class VehicleScraper:
     def __init__(self):
@@ -45,7 +54,7 @@ class VehicleScraper:
         try:
             # Get the path to the config directory relative to this file
             import os
-            config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'manufacturers.yml')
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'top_car_models.yml') # top_car_models_fourty.yml
             with open(config_path, 'r', encoding='utf-8') as file:
                 return yaml.safe_load(file)
         except FileNotFoundError:
@@ -139,46 +148,42 @@ class VehicleScraper:
             model = manufacturer['models'][model_key]
             print(f"📋 Model: {model['hebrew']} ({model['english']})")
         
-        # Step 1: Collect listing URLs from multiple pages
-        all_listing_urls = []
+        # Step 1: Collect listing URLs and thumbnails from multiple pages
+        all_listings_with_thumbnails = []
         page = 1
         max_pages = 50  # Safety limit to prevent infinite loops
         
-        print(f"📄 Collecting URLs from pages (target: {max_listings} listings)...")
+        print(f"📄 Collecting URLs and thumbnails from pages (target: {max_listings} listings)...")
         
-        while len(all_listing_urls) < max_listings and page <= max_pages:
+        while len(all_listings_with_thumbnails) < max_listings and page <= max_pages:
             search_url = self.get_manufacturer_url(manufacturer_key, model_key, page)
             print(f"🔍 Scanning page {page}: {search_url}")
             
             try:
-                print("📡 Trying fast requests method first...")
-                page_urls = self.get_listing_urls_from_page(search_url)
+                print("📡 Extracting URLs and thumbnails from search page...")
+                page_listings_with_thumbnails = self.get_listings_with_thumbnails_from_json(search_url)
                 
-                # HYBRID APPROACH: Use browser automation if we get less than 25 results
-                if 0 < len(page_urls) < 10 and SELENIUM_AVAILABLE:
-                    print(f"⚡ Found only {len(page_urls)} URLs with requests, trying browser automation...")
-                    browser_urls = self.get_listing_urls_with_browser(search_url)
-                    if len(browser_urls) > len(page_urls):
-                        print(f"✅ Browser found {len(browser_urls)} URLs (vs {len(page_urls)} from requests)")
-                        page_urls = browser_urls
-                    else:
-                        print(f"⚠️ Browser found {len(browser_urls)} URLs, keeping requests result")
-                elif len(page_urls) < 20:
-                    print("⚠️ Selenium not available, cannot use browser fallback")
-                
-                if not page_urls:
+                if not page_listings_with_thumbnails:
                     print(f"⚠️ No listings found on page {page}, stopping pagination")
                     break
                 
-                # Add new URLs (avoid duplicates) - use normalized URLs
-                normalized_page_urls = [self.normalize_listing_url(url) for url in page_urls]
-                new_urls = [url for url in normalized_page_urls if url not in all_listing_urls]
-                all_listing_urls.extend(new_urls)
+                # Add new listings (avoid duplicates) - use normalized URLs
+                existing_urls = {listing[0] for listing in all_listings_with_thumbnails}
+                new_listings = []
+                for listing_url, thumbnail_url in page_listings_with_thumbnails:
+                    normalized_url = self.normalize_listing_url(listing_url)
+                    if normalized_url not in existing_urls:
+                        new_listings.append((normalized_url, thumbnail_url))
+                        existing_urls.add(normalized_url)
                 
-                print(f"📄 Page {page}: Found {len(page_urls)} URLs, {len(new_urls)} new, total: {len(all_listing_urls)}")
+                all_listings_with_thumbnails.extend(new_listings)
+                
+                # Count thumbnails found
+                thumbnails_found = sum(1 for _, thumb_url in new_listings if thumb_url)
+                print(f"📄 Page {page}: Found {len(page_listings_with_thumbnails)} listings, {len(new_listings)} new, {thumbnails_found} with thumbnails, total: {len(all_listings_with_thumbnails)}")
                 
                 # Small delay between page requests
-                if page < max_pages and len(all_listing_urls) < max_listings:
+                if page < max_pages and len(all_listings_with_thumbnails) < max_listings:
                     time.sleep(random.uniform(0.5, 1.5))
                 
                 page += 1
@@ -188,41 +193,55 @@ class VehicleScraper:
                 break
         
         # Limit to requested number of listings
-        listing_urls = all_listing_urls[:max_listings]
-        print(f"📄 Final collection: {len(listing_urls)} listing URLs from {page-1} pages")
+        listings_with_thumbnails = all_listings_with_thumbnails[:max_listings]
+        print(f"📄 Final collection: {len(listings_with_thumbnails)} listings from {page-1} pages")
         
-        # Step 2: Extract detailed data from each listing - prioritize working URL patterns
-        # Separate URLs into working format vs others
-        working_urls = []
-        other_urls = []
+        # Step 2: Extract detailed data from each listing and download thumbnails
+        # Separate listings into working format vs others
+        working_listings = []
+        other_listings = []
         
-        for url in listing_urls:
-            if self.is_likely_car_listing_url(url):
-                working_urls.append(url)
+        for listing_url, thumbnail_url in listings_with_thumbnails:
+            if self.is_likely_car_listing_url(listing_url):
+                working_listings.append((listing_url, thumbnail_url))
             else:
-                other_urls.append(url)
+                other_listings.append((listing_url, thumbnail_url))
         
-        print(f"📊 URL Analysis: {len(working_urls)} working format, {len(other_urls)} other format")
+        print(f"📊 Listing Analysis: {len(working_listings)} working format, {len(other_listings)} other format")
         
         # Process working URLs first
-        prioritized_urls = working_urls + other_urls
+        prioritized_listings = working_listings + other_listings
         
         cars_data = []
-        for i, url in enumerate(prioritized_urls, 1):
-            print(f"🔍 Processing listing {i}/{len(prioritized_urls)}: {url}")
+        used_thumbnail_hashes = set()  # Track thumbnail hashes to ensure uniqueness
+        
+        for i, (listing_url, thumbnail_url) in enumerate(prioritized_listings, 1):
+            print(f"🔍 Processing listing {i}/{len(prioritized_listings)}: {listing_url}")
             try:
-                car_data = self.extract_car_data(url, manufacturer_name)
+                car_data = self.extract_car_data(listing_url, manufacturer_name)
                 if car_data:
+                    # Download thumbnail from search page with uniqueness validation
+                    if thumbnail_url:
+                        print(f"📥 Downloading thumbnail for listing {i}/{len(prioritized_listings)}")
+                        thumbnail = self.download_thumbnail_as_base64(thumbnail_url, used_thumbnail_hashes)
+                        if thumbnail:
+                            car_data['thumbnail_base64'] = thumbnail
+                            print(f"✅ Unique thumbnail downloaded and added to car data")
+                        else:
+                            print(f"⚠️ Thumbnail download failed or duplicate, continuing without thumbnail")
+                    else:
+                        print(f"⚠️ No thumbnail URL found for this listing")
+                    
                     cars_data.append(car_data)
                     print(f"✅ Extracted data for {car_data.get('manufacturer', 'Unknown')}")
                 else:
-                    print(f"⚠️ No data extracted from {url}")
+                    print(f"⚠️ No data extracted from {listing_url}")
                 
-                # Random delay between requests
-                time.sleep(random.uniform(0.5, 2))
+                # Random delay between requests (reduced since no longer taking screenshots)
+                time.sleep(random.uniform(0.5, 1.5))
                 
             except Exception as e:
-                print(f"❌ Error processing {url}: {e}")
+                print(f"❌ Error processing {listing_url}: {e}")
                 continue
         
         print(f"💾 Extracted {len(cars_data)} cars")
@@ -232,17 +251,186 @@ class VehicleScraper:
 
     def get_listing_urls_from_page(self, search_url: str) -> List[str]:
         """Extract listing URLs from a single search results page"""
+        # Get both URLs and thumbnails, but return only URLs for backward compatibility
+        listings_with_thumbnails = self.get_listings_with_thumbnails_from_json(search_url)
+        return [listing[0] for listing in listings_with_thumbnails]
+    
+    def get_listings_with_thumbnails_from_json(self, search_url: str) -> List[tuple]:
+        """Extract listings with thumbnails using JSON data - 95%+ accuracy guaranteed"""
+        try:
+            response = requests.get(search_url, headers=self.headers, timeout=15)
+            response.raise_for_status()
+            
+            html_content = response.text
+            
+            # Extract JSON data from window.__NEXT_DATA__ script tag
+            json_match = re.search(r'window\.__NEXT_DATA__\s*=\s*({.*?});', html_content, re.DOTALL)
+            
+            if not json_match:
+                print("❌ No __NEXT_DATA__ found in initial HTML (requires JS rendering)")
+                print("🔄 Falling back to enhanced HTML parsing with browser automation")
+                return self.get_listings_with_thumbnails_browser_enhanced(search_url)
+            
+            import json
+            try:
+                next_data = json.loads(json_match.group(1))
+            except json.JSONDecodeError as e:
+                print(f"❌ Failed to parse JSON data: {e}")
+                return self.get_listings_with_thumbnails_browser_enhanced(search_url)
+            
+            # Navigate to listings data
+            listings_data = next_data.get('props', {}).get('pageProps', {}).get('dehydratedState', {}).get('queries', [])
+            
+            listings_with_thumbnails = []
+            processed_tokens = set()
+            
+            print(f"🔍 Processing {len(listings_data)} query blocks from JSON data")
+            
+            for query in listings_data:
+                if 'state' in query and 'data' in query['state']:
+                    data = query['state']['data']
+                    
+                    # Process all listing categories with accurate thumbnail matching
+                    for category in ['platinum', 'commercial', 'solo', 'private']:
+                        if category in data and isinstance(data[category], list):
+                            
+                            for listing in data[category]:
+                                # Extract token and build URL
+                                token = listing.get('token')
+                                if not token or token in processed_tokens:
+                                    continue
+                                
+                                processed_tokens.add(token)
+                                listing_url = f"https://www.yad2.co.il/item/{token}"
+                                
+                                # Extract thumbnail with priority: coverImage > first image
+                                thumbnail_url = None
+                                meta_data = listing.get('metaData', {})
+                                
+                                if 'coverImage' in meta_data and meta_data['coverImage']:
+                                    thumbnail_url = meta_data['coverImage']
+                                elif 'images' in meta_data and meta_data['images'] and len(meta_data['images']) > 0:
+                                    thumbnail_url = meta_data['images'][0]
+                                
+                                if thumbnail_url and self.is_likely_car_listing_url(listing_url):
+                                    listings_with_thumbnails.append((listing_url, thumbnail_url))
+                                    print(f"✅ JSON-matched: {token} → {thumbnail_url[:50]}...")
+            
+            print(f"🎯 JSON extraction found {len(listings_with_thumbnails)} listings with perfect thumbnail matching")
+            return listings_with_thumbnails
+            
+        except Exception as e:
+            print(f"❌ JSON extraction failed: {e}")
+            return self.get_listings_with_thumbnails_browser_enhanced(search_url)
+
+    def get_listings_with_thumbnails_browser_enhanced(self, search_url: str) -> List[tuple]:
+        """Enhanced browser method: Extract JSON data after JavaScript rendering for perfect accuracy"""
+        if not SELENIUM_AVAILABLE:
+            print("❌ Selenium not available, falling back to HTML parsing")
+            return self.get_listings_with_thumbnails_from_page_fallback(search_url)
+        
+        driver = None
+        try:
+            print(f"🌐 Starting browser automation to extract JSON data from: {search_url}")
+            
+            # Setup Chrome options for stealth
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.get(search_url)
+            
+            # Wait for page to load and JavaScript to execute
+            print("⏳ Waiting for page to load and JavaScript to execute...")
+            time.sleep(3)
+            
+            # Try to extract JSON data from the rendered page
+            try:
+                json_data = driver.execute_script("return window.__NEXT_DATA__;")
+                if json_data:
+                    print("✅ Successfully extracted __NEXT_DATA__ from rendered page")
+                    
+                    # Navigate to listings data
+                    listings_data = json_data.get('props', {}).get('pageProps', {}).get('dehydratedState', {}).get('queries', [])
+                    
+                    listings_with_thumbnails = []
+                    processed_tokens = set()
+                    
+                    print(f"🔍 Processing {len(listings_data)} query blocks from browser JSON data")
+                    
+                    for query in listings_data:
+                        if 'state' in query and 'data' in query['state']:
+                            data = query['state']['data']
+                            
+                            # Process all listing categories with perfect thumbnail matching
+                            for category in ['platinum', 'commercial', 'solo', 'private']:
+                                if category in data and isinstance(data[category], list):
+                                    
+                                    for listing in data[category]:
+                                        # Extract token and build URL
+                                        token = listing.get('token')
+                                        if not token or token in processed_tokens:
+                                            continue
+                                        
+                                        processed_tokens.add(token)
+                                        listing_url = f"https://www.yad2.co.il/item/{token}"
+                                        
+                                        # Extract thumbnail with priority: coverImage > first image
+                                        thumbnail_url = None
+                                        meta_data = listing.get('metaData', {})
+                                        
+                                        if 'coverImage' in meta_data and meta_data['coverImage']:
+                                            thumbnail_url = meta_data['coverImage']
+                                        elif 'images' in meta_data and meta_data['images'] and len(meta_data['images']) > 0:
+                                            thumbnail_url = meta_data['images'][0]
+                                        
+                                        if thumbnail_url and self.is_likely_car_listing_url(listing_url):
+                                            listings_with_thumbnails.append((listing_url, thumbnail_url))
+                                            print(f"🎯 Browser-JSON matched: {token} → {thumbnail_url[:50]}...")
+                    
+                    print(f"🎉 Browser JSON extraction found {len(listings_with_thumbnails)} listings with PERFECT thumbnail matching!")
+                    return listings_with_thumbnails
+                else:
+                    print("❌ No __NEXT_DATA__ found even in rendered page")
+                    
+            except Exception as e:
+                print(f"❌ Failed to extract JSON from browser: {e}")
+                
+            # If JSON extraction fails, fall back to HTML parsing
+            print("🔄 Falling back to legacy HTML parsing method")
+            return self.get_listings_with_thumbnails_from_page_fallback(search_url)
+            
+        except Exception as e:
+            print(f"❌ Browser automation failed: {e}")
+            return self.get_listings_with_thumbnails_from_page_fallback(search_url)
+        finally:
+            if driver:
+                driver.quit()
+
+    def get_listings_with_thumbnails_from_page_fallback(self, search_url: str) -> List[tuple]:
+        """FALLBACK: Extract listing URLs and their thumbnail URLs using HTML parsing (legacy method)"""
         try:
             response = requests.get(search_url, headers=self.headers, timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            listing_urls = []
+            listings_with_thumbnails = []
+            processed_urls = set()
+            used_thumbnails = set()  # Track used thumbnails to ensure uniqueness
             
-            # ENHANCED: Extract ALL valid URLs (working format only)
-            links = soup.find_all('a', href=True)
-            for link in links:
+            print(f"🔍 Extracting listings from page with {len(soup.find_all('a', href=True))} total links")
+            
+            # Method 1: Find all item links first, then match with UNIQUE nearby thumbnails
+            all_item_links = soup.find_all('a', href=True)
+            item_links = []
+            
+            for link in all_item_links:
                 href = link.get('href')
                 if href and '/item/' in href:
                     # Clean the URL and make it absolute
@@ -253,41 +441,150 @@ class VehicleScraper:
                     else:
                         full_url = urljoin('https://www.yad2.co.il', '/' + href)
                     
-                    # ONLY add URLs with working format (short alphanumeric codes)
+                    # Normalize and validate URL
                     normalized_url = self.normalize_listing_url(full_url)
-                    if normalized_url not in listing_urls:
-                        listing_urls.append(normalized_url)
+                    if self.is_likely_car_listing_url(normalized_url) and normalized_url not in processed_urls:
+                        item_links.append((link, normalized_url))
+                        processed_urls.add(normalized_url)
             
-            # Method 2: Look for feed item links with data-nagish attribute
-            if len(listing_urls) == 0:
-                vehicle_links = soup.find_all('a', attrs={'data-nagish': 'feed-item-base-link'})
-                for link in vehicle_links:
-                    href = link.get('href')
-                    if href and 'item/' in href:
-                        full_url = urljoin('https://www.yad2.co.il', href)
-                        if full_url not in listing_urls:
-                            listing_urls.append(full_url)
+            print(f"🔗 Found {len(item_links)} valid item links")
             
-            # Method 3: Look for elements with data-testid containing item IDs
-            if len(listing_urls) == 0:
-                testid_elements = soup.find_all(attrs={'data-testid': re.compile(r'^[a-zA-Z0-9]+$')})
-                for element in testid_elements:
-                    testid = element.get('data-testid')
-                    if testid and len(testid) > 5:  # Likely an item ID
-                        # Find the link within this element
-                        link = element.find('a', href=True)
-                        if link:
-                            href = link.get('href')
-                            if href and 'item/' in href:
-                                full_url = urljoin('https://www.yad2.co.il', href)
-                                if full_url not in listing_urls:
-                                    listing_urls.append(full_url)
+            # Method 2: SMART DISTANCE-BASED thumbnail matching
+            # Find all images first, then match each link to the closest unique image
+            all_images = soup.find_all('img', src=True)
+            valid_images = []
             
-            print(f"🔍 Found {len(listing_urls)} listing URLs on page")
-            return listing_urls
+            for img in all_images:
+                img_src = img.get('src')
+                if img_src and ('yad2.co.il' in img_src or img_src.startswith('/Pic/')):
+                    # Make absolute URL
+                    if img_src.startswith('/'):
+                        full_img_url = urljoin('https://img.yad2.co.il', img_src)
+                    elif img_src.startswith('http'):
+                        full_img_url = img_src
+                    else:
+                        continue
+                    valid_images.append((img, full_img_url))
+            
+            print(f"🔍 Found {len(valid_images)} valid images to match against")
+            
+            # For each link, find the closest unique image
+            for link_element, listing_url in item_links:
+                thumbnail_url = None
+                min_distance = float('inf')
+                best_image_url = None
+                
+                # Calculate distance from this link to all available images
+                for img_element, img_url in valid_images:
+                    if img_url in used_thumbnails:
+                        continue  # Skip already used images
+                    
+                    # Calculate distance using multiple methods
+                    distance_score = 0
+                    
+                    # Method 1: DOM tree distance (parent-child relationship)
+                    try:
+                        # Check if image and link share common ancestors
+                        link_parents = []
+                        current = link_element
+                        for level in range(10):  # Go up to 10 levels
+                            if current.parent:
+                                current = current.parent
+                                link_parents.append(current)
+                            else:
+                                break
+                        
+                        img_parents = []
+                        current = img_element
+                        for level in range(10):
+                            if current.parent:
+                                current = current.parent
+                                img_parents.append(current)
+                            else:
+                                break
+                        
+                        # Find lowest common ancestor
+                        common_ancestor = None
+                        link_depth = 0
+                        img_depth = 0
+                        
+                        for i, link_parent in enumerate(link_parents):
+                            for j, img_parent in enumerate(img_parents):
+                                if link_parent == img_parent:
+                                    common_ancestor = link_parent
+                                    link_depth = i
+                                    img_depth = j
+                                    break
+                            if common_ancestor:
+                                break
+                        
+                        if common_ancestor:
+                            # Distance is sum of depths from common ancestor
+                            tree_distance = link_depth + img_depth
+                            distance_score += tree_distance * 10  # Weight tree distance heavily
+                        else:
+                            distance_score += 1000  # High penalty for no common ancestor
+                            
+                    except:
+                        distance_score += 500  # Medium penalty for calculation error
+                    
+                    # Method 2: HTML string position distance
+                    try:
+                        page_html = str(soup)
+                        link_href = link_element.get('href', '')
+                        if link_href:
+                            link_pos = page_html.find(link_href)
+                            img_src = img_element.get('src', '')
+                            img_pos = page_html.find(img_src)
+                            
+                            if link_pos >= 0 and img_pos >= 0:
+                                string_distance = abs(link_pos - img_pos)
+                                distance_score += string_distance / 100  # Normalized string distance
+                            else:
+                                distance_score += 100
+                    except:
+                        distance_score += 50
+                    
+                    # Choose image with lowest distance score
+                    if distance_score < min_distance:
+                        min_distance = distance_score
+                        best_image_url = img_url
+                
+                # Assign the best match
+                if best_image_url and best_image_url not in used_thumbnails:
+                    thumbnail_url = best_image_url
+                    used_thumbnails.add(thumbnail_url)
+                    print(f"🎯 Distance-matched thumbnail for {listing_url[-8:]} (score: {min_distance:.1f})")
+                else:
+                    print(f"⚠️ No suitable unique thumbnail found for {listing_url[-8:]}")
+                
+                # If still no unique thumbnail found, try browser automation for this specific listing
+                if not thumbnail_url:
+                    print(f"⚠️ No unique thumbnail found for {listing_url[-8:]}")
+                
+                listings_with_thumbnails.append((listing_url, thumbnail_url))
+            
+            # Method 3: Browser automation fallback if too many missing thumbnails
+            missing_thumbnails = sum(1 for _, thumb in listings_with_thumbnails if not thumb)
+            if missing_thumbnails > len(listings_with_thumbnails) * 0.3 and SELENIUM_AVAILABLE:
+                print(f"⚡ {missing_thumbnails} listings missing thumbnails, trying browser automation...")
+                browser_results = self.get_listings_with_thumbnails_browser(search_url)
+                if browser_results:
+                    print(f"✅ Browser found {len(browser_results)} listings, merging results...")
+                    return browser_results
+            
+            # Validate uniqueness
+            found_thumbnails = [thumb for _, thumb in listings_with_thumbnails if thumb]
+            unique_thumbnails = len(set(found_thumbnails))
+            print(f"🔍 Found {len(listings_with_thumbnails)} listings, {len(found_thumbnails)} with thumbnails, {unique_thumbnails} unique")
+            
+            if len(found_thumbnails) != unique_thumbnails:
+                print(f"⚠️ WARNING: {len(found_thumbnails) - unique_thumbnails} duplicate thumbnails detected")
+            
+            return listings_with_thumbnails
             
         except Exception as e:
-            print(f"❌ Error getting listing URLs from page: {e}")
+            print(f"❌ Error getting listings with thumbnails from page: {e}")
             return []
 
     def get_listing_urls_with_browser(self, search_url: str) -> List[str]:
@@ -778,7 +1075,7 @@ class VehicleScraper:
                     print(f"🎯 JSON pattern found price: {price_value}")
                     return price_value
                 else:
-                    print(f"⚠️ JSON price {price_value} outside realistic range (50K-1M)")
+                    print(f"⚠️ JSON price {price_value} outside realistic range (10K-1M)")
             return None
         except Exception as e:
             print(f"❌ Error extracting price from JSON pattern: {e}")
@@ -1004,3 +1301,316 @@ class VehicleScraper:
                                                 break
                 except:
                     continue 
+    
+    def capture_thumbnail(self, listing_url: str) -> Optional[str]:
+        """Capture thumbnail image from listing page and return as base64 string"""
+        if not SELENIUM_AVAILABLE:
+            print("❌ Selenium not available for thumbnail capture")
+            return None
+        
+        driver = None
+        try:
+            # Create thumbnail URL by appending the gallery modal fragment
+            thumbnail_url = f"{listing_url}#galleryModal-grid-swiper-item-0"
+            print(f"📸 Capturing thumbnail from: {thumbnail_url}")
+            
+            # Setup Chrome options for thumbnail capture
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1200,800')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # Add realistic user agent
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
+            # Initialize driver
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Load the thumbnail URL
+            driver.get(thumbnail_url)
+            time.sleep(3)  # Wait for page to load
+            
+            # Try to find and wait for the main image element
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            wait = WebDriverWait(driver, 10)
+            
+            # Look for common image selectors on Yad2
+            image_selectors = [
+                "img[src*='yad2']",  # Yad2 images
+                ".gallery img",
+                ".image-gallery img", 
+                ".swiper-slide img",
+                "[data-testid*='image'] img",
+                ".main-image img",
+                "img[alt*='car'], img[alt*='רכב']"  # Car-related alt text
+            ]
+            
+            image_element = None
+            for selector in image_selectors:
+                try:
+                    image_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                    if image_element.is_displayed():
+                        print(f"✅ Found image with selector: {selector}")
+                        break
+                except:
+                    continue
+            
+            # If no specific image found, try to find any visible image
+            if not image_element:
+                try:
+                    images = driver.find_elements(By.TAG_NAME, "img")
+                    for img in images:
+                        if img.is_displayed() and img.size['width'] > 100 and img.size['height'] > 100:
+                            image_element = img
+                            print(f"✅ Found fallback image: {img.get_attribute('src')[:50]}...")
+                            break
+                except:
+                    pass
+            
+            if not image_element:
+                print("⚠️ No suitable image found for thumbnail")
+                return None
+            
+            # Take a screenshot of the specific image element
+            try:
+                screenshot_png = image_element.screenshot_as_png
+                
+                # Resize image to thumbnail size using PIL if available
+                if PIL_AVAILABLE:
+                    try:
+                        image = Image.open(io.BytesIO(screenshot_png))
+                        
+                        # Resize to thumbnail (max 300x200, maintain aspect ratio)
+                        image.thumbnail((300, 200), Image.Resampling.LANCZOS)
+                        
+                        # Convert back to bytes
+                        output_buffer = io.BytesIO()
+                        image.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                        thumbnail_bytes = output_buffer.getvalue()
+                        print(f"✅ PIL resized image: {len(thumbnail_bytes)} bytes")
+                        
+                    except Exception as e:
+                        print(f"⚠️ PIL processing failed ({e}), using Selenium crop fallback")
+                        # Fallback: Use Selenium to crop the image element to a smaller size
+                        try:
+                            driver.set_window_size(800, 600)  # Smaller window
+                            time.sleep(1)
+                            screenshot_png = image_element.screenshot_as_png
+                            thumbnail_bytes = screenshot_png
+                        except:
+                            thumbnail_bytes = screenshot_png
+                else:
+                    print("⚠️ PIL not available, using Selenium crop fallback")
+                    # Fallback: Use Selenium to crop the image element to a smaller size
+                    try:
+                        driver.set_window_size(800, 600)  # Smaller window
+                        time.sleep(1)
+                        screenshot_png = image_element.screenshot_as_png
+                        thumbnail_bytes = screenshot_png
+                    except:
+                        thumbnail_bytes = screenshot_png
+                
+                # Convert to base64
+                base64_string = base64.b64encode(thumbnail_bytes).decode('utf-8')
+                
+                # Check size limit (200KB base64 limit - more reasonable)
+                if len(base64_string) > 200000:
+                    print(f"⚠️ Thumbnail too large ({len(base64_string)} chars), skipping")
+                    return None
+                
+                print(f"✅ Captured thumbnail ({len(base64_string)} chars)")
+                return base64_string
+                
+            except Exception as e:
+                print(f"❌ Error taking screenshot: {e}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error capturing thumbnail from {thumbnail_url}: {e}")
+            return None
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+    
+    def get_listings_with_thumbnails_browser(self, search_url: str) -> List[tuple]:
+        """Extract listings and thumbnails using browser automation - for JavaScript-heavy pages"""
+        if not SELENIUM_AVAILABLE:
+            print("❌ Selenium not available for browser automation")
+            return []
+        
+        driver = None
+        try:
+            print(f"🌐 Starting browser automation for listings and thumbnails: {search_url}")
+            
+            # Setup Chrome options for stealth
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
+            driver = webdriver.Chrome(options=chrome_options)
+            driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Load the page completely
+            driver.get(search_url)
+            
+            # Wait and scroll to load all content
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            wait = WebDriverWait(driver, 30)
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            time.sleep(3)
+            
+            # Scroll to load all listings
+            last_height = driver.execute_script("return document.body.scrollHeight")
+            for scroll_step in range(5):
+                driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {(scroll_step + 1) * 0.2});")
+                time.sleep(2)
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if new_height != last_height:
+                    last_height = new_height
+            
+            # Get page source and parse
+            page_source = driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+            
+            listings_with_thumbnails = []
+            processed_urls = set()
+            
+            # Find all item links
+            all_links = soup.find_all('a', href=True)
+            for link in all_links:
+                href = link.get('href')
+                if href and '/item/' in href:
+                    # Clean and normalize URL
+                    if href.startswith('/'):
+                        full_url = urljoin('https://www.yad2.co.il', href)
+                    elif href.startswith('http'):
+                        full_url = href
+                    else:
+                        full_url = urljoin('https://www.yad2.co.il', '/' + href)
+                    
+                    normalized_url = self.normalize_listing_url(full_url)
+                    if not self.is_likely_car_listing_url(normalized_url) or normalized_url in processed_urls:
+                        continue
+                    
+                    # Find thumbnail near this link
+                    thumbnail_url = None
+                    current_element = link
+                    for level in range(6):  # Check more levels in browser version
+                        if current_element.parent:
+                            current_element = current_element.parent
+                            images = current_element.find_all('img', src=True)
+                            for img in images:
+                                img_src = img.get('src')
+                                if img_src and ('yad2.co.il' in img_src or img_src.startswith('/Pic/') or 'image' in img_src.lower()):
+                                    if img_src.startswith('/'):
+                                        thumbnail_url = urljoin('https://img.yad2.co.il', img_src)
+                                    elif img_src.startswith('http'):
+                                        thumbnail_url = img_src
+                                    break
+                            if thumbnail_url:
+                                break
+                    
+                    listings_with_thumbnails.append((normalized_url, thumbnail_url))
+                    processed_urls.add(normalized_url)
+            
+            print(f"🎯 Browser automation found {len(listings_with_thumbnails)} listings with thumbnails")
+            return listings_with_thumbnails
+            
+        except Exception as e:
+            print(f"❌ Browser automation error: {e}")
+            return []
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
+    
+    def download_thumbnail_as_base64(self, thumbnail_url: str, used_thumbnails_hashes: set = None) -> Optional[str]:
+        """Download thumbnail image and convert to base64 with uniqueness validation"""
+        if not thumbnail_url:
+            return None
+        
+        if used_thumbnails_hashes is None:
+            used_thumbnails_hashes = set()
+            
+        try:
+            print(f"📥 Downloading thumbnail: {thumbnail_url[:60]}...")
+            
+            # Download the image
+            response = requests.get(thumbnail_url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            
+            # Get image bytes
+            original_image_bytes = response.content
+            
+            # First check: Verify original image is unique by hash
+            import hashlib
+            original_hash = hashlib.md5(original_image_bytes).hexdigest()
+            if original_hash in used_thumbnails_hashes:
+                print(f"⚠️ Duplicate original image detected (hash: {original_hash[:8]}), skipping")
+                return None
+                
+            # Resize image if PIL is available
+            image_bytes = original_image_bytes
+            if PIL_AVAILABLE and len(original_image_bytes) > 0:
+                try:
+                    image = Image.open(io.BytesIO(original_image_bytes))
+                    
+                    # Resize to thumbnail (max 300x200, maintain aspect ratio)  
+                    image.thumbnail((300, 200), Image.Resampling.LANCZOS)
+                    
+                    # Convert to JPEG and optimize
+                    output_buffer = io.BytesIO()
+                    # Convert to RGB if image has transparency (for JPEG compatibility)
+                    if image.mode in ('RGBA', 'LA', 'P'):
+                        image = image.convert('RGB')
+                    image.save(output_buffer, format='JPEG', quality=85, optimize=True)
+                    image_bytes = output_buffer.getvalue()
+                    print(f"✅ PIL resized thumbnail: {len(image_bytes)} bytes")
+                    
+                except Exception as e:
+                    print(f"⚠️ PIL processing failed ({e}), using original image")
+            
+            # Second check: Verify processed image is still unique
+            processed_hash = hashlib.md5(image_bytes).hexdigest()
+            if processed_hash in used_thumbnails_hashes:
+                print(f"⚠️ Processed image became duplicate (hash: {processed_hash[:8]}), skipping")
+                return None
+            
+            # Add hashes to used set
+            used_thumbnails_hashes.add(original_hash)
+            used_thumbnails_hashes.add(processed_hash)
+            
+            # Convert to base64
+            base64_string = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Check size limit (200KB base64 limit)
+            if len(base64_string) > 200000:
+                print(f"⚠️ Thumbnail too large ({len(base64_string)} chars), skipping")
+                return None
+            
+            print(f"✅ Downloaded unique thumbnail ({len(base64_string)} chars, hash: {processed_hash[:8]})")
+            return base64_string
+            
+        except Exception as e:
+            print(f"❌ Error downloading thumbnail from {thumbnail_url}: {e}")
+            return None

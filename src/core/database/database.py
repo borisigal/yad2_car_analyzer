@@ -104,6 +104,7 @@ class CarDatabase:
                     listing_url TEXT UNIQUE,
                     listing_title TEXT,
                     description TEXT,
+                    thumbnail_base64 TEXT,
                     mechanical_age DECIMAL(10,2),
                     mechanical_age_real_age_ratio DECIMAL(10,2),
                     age_in_months INTEGER,
@@ -134,6 +135,7 @@ class CarDatabase:
                     listing_url TEXT,
                     listing_title TEXT,
                     description TEXT,
+                    thumbnail_base64 TEXT,
                     age_in_months INTEGER,
                     insert_time_utc TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers (id),
@@ -301,8 +303,8 @@ class CarDatabase:
                             (id, manufacturer_id, manufacturer, model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
-                             current_owner_number, listing_url, listing_title, description, insert_time_utc)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             current_owner_number, listing_url, listing_title, description, thumbnail_base64, insert_time_utc)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (listing_url) DO NOTHING
                         ''', (
                             car_id,
@@ -326,6 +328,7 @@ class CarDatabase:
                             car.get('listing_url', ''),
                             car.get('listing_title', ''),
                             car.get('description', ''),
+                            car.get('thumbnail_base64'),
                             datetime.utcnow()
                         ))
                     else:
@@ -334,8 +337,8 @@ class CarDatabase:
                             (id, manufacturer_id, manufacturer, model, price, year, age, date_on_road, mileage, 
                              fuel_type, transmission, engine_size, color, condition, 
                              location, current_ownership_type, previous_ownership_type, 
-                             current_owner_number, listing_url, listing_title, description, insert_time_utc)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             current_owner_number, listing_url, listing_title, description, thumbnail_base64, insert_time_utc)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             car_id,
                             manufacturer_id,
@@ -358,6 +361,7 @@ class CarDatabase:
                             car.get('listing_url', ''),
                             car.get('listing_title', ''),
                             car.get('description', ''),
+                            car.get('thumbnail_base64'),
                             datetime.utcnow()
                         ))
                     added_count += cursor.rowcount

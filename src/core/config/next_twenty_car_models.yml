@@ -1,0 +1,151 @@
+manufacturers:
+  honda:
+    hebrew: "הונדה"
+    english: "Honda"
+    manufacturer_id: 17
+    models:
+      jazz:
+        hebrew: "ג'אז"
+        english: "Jazz"
+        model_id: 10188
+  kia:
+    hebrew: "קיה"
+    english: "Kia"
+    manufacturer_id: 48
+    models:
+      sorento:
+        hebrew: "סורנטו"
+        english: "Sorento"
+        model_id: 10718
+      rio:
+        hebrew: "ריו"
+        english: "Rio"
+        model_id: 10714
+  volkswagen:
+    hebrew: "פולקסווגן"
+    english: "Volkswagen"
+    manufacturer_id: 41
+    models:
+      golf:
+        hebrew: "גולף"
+        english: "Golf"
+        model_id: 10562
+      polo:
+        hebrew: "פולו"
+        english: "Polo"
+        model_id: 10571
+  seat:
+    hebrew: "סיאט"
+    english: "Seat"
+    manufacturer_id: 37
+    models:
+      ibiza:
+        hebrew: "איביזה"
+        english: "Ibiza"
+        model_id: 10507
+      leon:
+        hebrew: "לאון"
+        english: "Leon"
+        model_id: 10509
+  hyundai:
+    hebrew: "יונדאי"
+    english: "Hyundai"
+    manufacturer_id: 21
+    models:
+      i30:
+        hebrew: "i30"
+        english: "i30"
+        model_id: 10276
+      i10:
+        hebrew: "i10"
+        english: "i10"
+        model_id: 10272
+      accent:
+        hebrew: "אקסנט"
+        english: "Accent"
+        model_id: 10275
+  ford:
+    hebrew: "פורד"
+    english: "Ford"
+    manufacturer_id: 43
+    models:
+      focus:
+        hebrew: "פוקוס"
+        english: "Focus"
+        model_id: 10598
+      kuga:
+        hebrew: "קוגה"
+        english: "Kuga"
+        model_id: 10601
+  nissan:
+    hebrew: "ניסאן"
+    english: "Nissan"
+    manufacturer_id: 32
+    models:
+      qashqai:
+        hebrew: "קשקאי"
+        english: "Qashqai"
+        model_id: 10449
+  opel:
+    hebrew: "אופל"
+    english: "Opel"
+    manufacturer_id: 2
+    models:
+      corsa:
+        hebrew: "קורסה"
+        english: "Corsa"
+        model_id: 10038
+  peugeot:
+    hebrew: "פיג'ו"
+    english: "Peugeot"
+    manufacturer_id: 46
+    models:
+      3008:
+        hebrew: "3008"
+        english: "3008"
+        model_id: 10661
+  toyota:
+    hebrew: "טויוטה"
+    english: "Toyota"
+    manufacturer_id: 19
+    models:
+      auris:
+        hebrew: "אוריס"
+        english: "Auris"
+        model_id: 10218
+  jeep:
+    hebrew: "ג'יפ"
+    english: "Jeep"
+    manufacturer_id: 10
+    models:
+      avenger:
+        hebrew: "אבנג'ר"
+        english: "Avenger"
+        model_id: 13199
+  skoda:
+    hebrew: "סקודה"
+    english: "Skoda"
+    manufacturer_id: 40
+    models:
+      karoq:
+        hebrew: "קארוק"
+        english: "Karoq"
+        model_id: 10545
+  chevrolet:
+    hebrew: "שברולט"
+    english: "Chevrolet"
+    manufacturer_id: 52
+    models:
+      equinox:
+        hebrew: "אקווינוקס"
+        english: "Equinox"
+        model_id: 10784
+  citroen:
+    hebrew: "סיטרואן"
+    english: "Citroen"
+    manufacturer_id: 38
+    models:
+      c5_aircross:
+        hebrew: "איירקרוס C5"
+        english: "C5 Aircross"
+        model_id: 11551

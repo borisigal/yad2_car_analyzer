@@ -1,0 +1,146 @@
+manufacturers:
+  kia:
+    hebrew: "קיה"
+    english: "Kia"
+    manufacturer_id: 48
+    models:
+      picanto:
+        hebrew: "פיקנטו"
+        english: "Picanto"
+        model_id: 10711
+      sportage:
+        hebrew: "ספורטז'"
+        english: "Sportage"
+        model_id: 10720
+      ceed:
+        hebrew: "סיד"
+        english: "ceed"
+        model_id: 10698  # Note: Based on Kia Ceed (סיד) which may be the same as Cerato
+  toyota:
+    hebrew: "טויוטה"
+    english: "Toyota"
+    manufacturer_id: 19
+    models:
+      corolla:
+        hebrew: "קורולה"
+        english: "Corolla"
+        model_id: 10226
+      rav4:
+        hebrew: "RAV4"
+        english: "RAV4"
+        model_id: 10238
+      yaris:
+        hebrew: "יאריס"
+        english: "Yaris"
+        model_id: 10247
+  hyundai:
+    hebrew: "יונדאי"
+    english: "Hyundai"
+    manufacturer_id: 21
+    models:
+      i20:
+        hebrew: "i20"
+        english: "i20"
+        model_id: 10273
+      elantra:
+        hebrew: "אלנטרה"
+        english: "Elantra"
+        model_id: 10263
+      tucson:
+        hebrew: "טוסון"
+        english: "Tucson"
+        model_id: 10291
+  mazda:
+    hebrew: "מאזדה"
+    english: "Mazda"
+    manufacturer_id: 27
+    models:
+      3:
+        hebrew: "3"
+        english: "3"
+        model_id: 10332
+      cx_5:
+        hebrew: "CX-5"
+        english: "CX-5"
+        model_id: 10342
+  honda:
+    hebrew: "הונדה"
+    english: "Honda"
+    manufacturer_id: 17
+    models:
+      civic:
+        hebrew: "סיוויק"
+        english: "Civic"
+        model_id: 10182
+  subaru:
+    hebrew: "סובארו"
+    english: "Subaru"
+    manufacturer_id: 35
+    models:
+      forester:
+        hebrew: "פורסטר"
+        english: "Forester"
+        model_id: 10476
+  skoda:
+    hebrew: "סקודה"
+    english: "Skoda"
+    manufacturer_id: 40
+    models:
+      octavia:
+        hebrew: "אוקטביה"
+        english: "Octavia"
+        model_id: 10547
+  nissan:
+    hebrew: "ניסאן"
+    english: "Nissan"
+    manufacturer_id: 32
+    models:
+      micra:
+        hebrew: "מיקרה"
+        english: "Micra"
+        model_id: 10438
+  chevrolet:
+    hebrew: "שברולט"
+    english: "Chevrolet"
+    manufacturer_id: 52
+    models:
+      spark:
+        hebrew: "ספארק"
+        english: "Spark"
+        model_id: 10796
+  mitsubishi:
+    hebrew: "מיצובישי"
+    english: "Mitsubishi"
+    manufacturer_id: 30
+    models:
+      asx:
+        hebrew: "ASX"
+        english: "ASX"
+        model_id: 10366
+  suzuki:
+    hebrew: "סוזוקי"
+    english: "Suzuki"
+    manufacturer_id: 36
+    models:
+      swift:
+        hebrew: "סוויפט"
+        english: "Swift"
+        model_id: 10497
+  peugeot:
+    hebrew: "פיג'ו"
+    english: "Peugeot"
+    manufacturer_id: 46
+    models:
+      208:
+        hebrew: "208"
+        english: "208"
+        model_id: 10659
+  renault:
+    hebrew: "רנו"
+    english: "Renault"
+    manufacturer_id: 51
+    models:
+      clio:
+        hebrew: "קליאו"
+        english: "Clio"
+        model_id: 10751
