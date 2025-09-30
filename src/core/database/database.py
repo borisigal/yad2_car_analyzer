@@ -292,8 +292,15 @@ class CarDatabase:
             
             # Add new listings
             added_count = 0
-            for car in cars_data:
+            for i, car in enumerate(cars_data, 1):
                 try:
+                    # Check thumbnail before insertion
+                    thumbnail = car.get('thumbnail_base64')
+                    if thumbnail:
+                        print(f"   📸 Car {i}: HAS thumbnail ({len(str(thumbnail)):,} chars)")
+                    else:
+                        print(f"   ❌ Car {i}: NO thumbnail - {car.get('listing_title', 'Unknown')}")
+                    
                     # Generate UUID4 for the id column
                     car_id = str(uuid.uuid4())
                     

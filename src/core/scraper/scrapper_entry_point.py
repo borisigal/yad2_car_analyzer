@@ -2,11 +2,16 @@
 """
 Entry point for Yad2 Car Analyzer
 This script resets the database, scrapes fresh data, and populates the database.
+
+Uses VehicleScraperZenRows by default to bypass anti-bot protection.
+Original VehicleScraper is kept intact for reference.
 """
 
 import os
 import sys
 import argparse
+import time
+from datetime import datetime
 from typing import List, Dict
 
 # Add the src directory to the Python path if not already there
@@ -18,6 +23,9 @@ if src_path not in sys.path:
 
 from src.core.database.database import CarDatabase
 from src.core.scraper.vehicle_scraper import VehicleScraper
+from src.core.scraper.vehicle_scraper_zenrows import VehicleScraperZenRows
+from src.core.scraper.vehicle_scraper_scrapingbee import VehicleScraperScrapingBee
+from src.core.scraper.vehicle_scraper_brightdata import VehicleScraperBrightData
 from src.core.etl.etl import DataEnricher
 
 
@@ -33,9 +41,20 @@ def scrape_cars(manufacturer: str = None, model: str = None, max_listings: int =
     Returns:
         List of dictionaries containing all scraped car data
     """
-    print("🔍 Starting car scraping...")
+    print(f"🔍 Starting car scraping at {datetime.now().strftime('%H:%M:%S')}...")
     
-    scraper = VehicleScraper()
+    # Use ZenRows scraper for bypassing anti-bot protection
+    # scraper = VehicleScraperZenRows()
+    # print("🚀 Using ZenRows-enhanced scraper to bypass anti-bot protection")
+
+    # Use ScrapingBee scraper for bypassing anti-bot protection
+    # scraper = VehicleScraperScrapingBee()
+    # print("🐝 Using ScrapingBee scraper to bypass anti-bot protection")
+
+    # Use BrightData scraper for bypassing anti-bot protection
+    scraper = VehicleScraperBrightData()
+    print("🔍 Using BrightData scraper to bypass anti-bot protection")
+
     
     # Load manufacturers configuration
     manufacturers = scraper.load_manufacturers()
@@ -99,7 +118,8 @@ def scrape_cars(manufacturer: str = None, model: str = None, max_listings: int =
             except Exception as e:
                 print(f"   ❌ Error scraping {model_config['english']}: {e}")
     
-    print(f"\n🎉 Scraping completed! Total cars found: {len(all_cars_data)}")
+    print(f"\n🎉 Scraping completed at {datetime.now().strftime('%H:%M:%S')}!")
+    print(f"📊 Total cars found: {len(all_cars_data)}")
     return all_cars_data
 
 def store_cars_in_database(cars_data: List[Dict], database_type: str) -> int:
@@ -115,7 +135,7 @@ def store_cars_in_database(cars_data: List[Dict], database_type: str) -> int:
         print("⚠️ No cars data to store")
         return 0
     
-    print("💾 Storing cars in database...")
+    print(f"💾 Starting database write at {datetime.now().strftime('%H:%M:%S')}...")
     db = CarDatabase(database_type=database_type)
     
     # Get next run number for raw data tracking
@@ -152,7 +172,8 @@ def store_cars_in_database(cars_data: List[Dict], database_type: str) -> int:
         except Exception as e:
             print(f"   ❌ Error storing cars for {manufacturer_name}: {e}")
     
-    print(f"✅ Database storage completed! Total stored: {total_stored} cars, {raw_data_stored} raw HTML pages")
+    print(f"✅ Database storage completed at {datetime.now().strftime('%H:%M:%S')}!")
+    print(f"📊 Total stored: {total_stored} cars, {raw_data_stored} raw HTML pages")
     return total_stored
 
 def parse_args():
@@ -175,8 +196,11 @@ def main():
     
     args = parse_args()
     
+    overall_start_time = time.time()
+    
     print("🚀 Yad2 Car Analyzer - Fresh Scrape")
     print("=" * 50)
+    print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Manufacturer: {args.manufacturer or 'All'}")
     print(f"Model: {args.model or 'All'}")
     print(f"Listings per model: {args.listings}")
@@ -190,19 +214,34 @@ def main():
         db.reset_database()
         
         # Step 2: Scrape cars
+        scraping_start_time = time.time()
         cars_data = scrape_cars(
             manufacturer=args.manufacturer,
             model=args.model,
             max_listings=args.listings
         )
+        scraping_end_time = time.time()
+        scraping_duration = scraping_end_time - scraping_start_time
         
         # Step 3: Store cars in database
         if cars_data:
+            db_start_time = time.time()
             stored_count = store_cars_in_database(cars_data, database_type=args.database)
+            db_end_time = time.time()
+            db_duration = db_end_time - db_start_time
             
             # Step 4: Enrich data with calculated fields
+            enrichment_start_time = time.time()
+            print(f"\n🔧 Starting data enrichment at {datetime.now().strftime('%H:%M:%S')}...")
             enricher = DataEnricher(database_type=args.database)
             enriched_count = enricher.enrich_data()
+            enrichment_end_time = time.time()
+            enrichment_duration = enrichment_end_time - enrichment_start_time
+            print(f"✅ Data enrichment completed at {datetime.now().strftime('%H:%M:%S')}!")
+            print(f"⏱️ Total enrichment time: {enrichment_duration:.1f} seconds")
+            
+            overall_end_time = time.time()
+            overall_duration = overall_end_time - overall_start_time
             
             print(f"\n✅ All steps completed successfully!")
             print(f"📊 Scraped {len(cars_data)} cars total")
@@ -210,13 +249,20 @@ def main():
             print(f"🔧 Enriched {enriched_count} records with mechanical_age")
             
             # Calculate and display total execution time
-            print("\n" + "=" * 50)
-            print("⏱️  EXECUTION SUMMARY")
-            print("=" * 50)
+            print("\n" + "=" * 60)
+            print("⏱️  EXECUTION TIMING SUMMARY")
+            print("=" * 60)
+            print(f"🔍 Total scraping time: {scraping_duration:.1f}s ({scraping_duration/60:.1f}m)")
+            print(f"💾 Total database write time: {db_duration:.1f}s")
+            print(f"🔧 Total enrichment time: {enrichment_duration:.1f}s")
+            print(f"⏱️ Overall process time: {overall_duration:.1f}s ({overall_duration/60:.1f}m)")
+            print("\n" + "=" * 60)
+            print("📊 DATA SUMMARY")
+            print("=" * 60)
             print(f"📊 Scraped {len(cars_data)} cars total")
             print(f"📊 Stored {stored_count} cars in database")
             print(f"🔧 Enriched {enriched_count} records with mechanical_age")
-            print("=" * 50)
+            print("=" * 60)
             
             print("📊 Check the database for scraped data:")
             if args.database == 'sqlite':
